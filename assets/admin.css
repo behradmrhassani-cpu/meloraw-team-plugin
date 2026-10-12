@@ -123,3 +123,31 @@
 .mlt .mlt-report code, .mlt .mlt-import code { background: var(--bg); color: var(--cyan); padding: 1px 6px; border-radius: 4px; }
 .mlt .mlt-import input[type=file]::file-selector-button { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 12px; margin-inline-end: 10px; font-family: inherit; cursor: pointer; }
 .mlt .mlt-import input[type=file]::file-selector-button:hover { border-color: var(--gold); color: var(--gold); }
+
+/* روتین‌ها و بانک ایده‌ها */
+.mlt-rsec { margin-bottom: 28px; }
+.mlt-rsec h2 { font-size: 18px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mlt .mlt-rsec h2 code { background: var(--raised); color: var(--cyan); padding: 1px 8px; border-radius: 4px; font-size: 13px; font-weight: normal; }
+.mlt-rsec h2 .mlt-count { margin-inline-start: auto; font-size: 13px; }
+.mlt-rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; align-items: start; }
+.mlt-rgrid .mlt-card { margin-bottom: 0; }
+.mlt-card:target, .mlt-idea:target { box-shadow: 0 0 0 1px var(--gold); }
+.mlt-tri { display: inline-flex; margin: 10px 0 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.mlt-tri button { background: var(--bg); color: var(--dim); border: 0; border-inline-start: 1px solid var(--line); padding: 4px 10px; font-family: inherit; font-size: 12px; cursor: pointer; }
+.mlt-tri button:first-of-type { border-inline-start: 0; }
+.mlt-tri button:not([disabled]):hover { color: var(--ink); background: var(--raised); }
+.mlt-tri button[disabled] { cursor: default; font-weight: 600; }
+.mlt-tri button.mlt-tri-open[disabled] { background: var(--line); color: var(--ink); }
+.mlt-tri button.mlt-tri-in_progress[disabled] { background: rgba(242, 168, 60, .18); color: var(--gold); }
+.mlt-tri button.mlt-tri-done[disabled] { background: rgba(70, 167, 88, .2); color: var(--green); }
+.mlt-icat { background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.mlt-icat h3 { font-size: 15px; margin-bottom: 8px; display: flex; justify-content: space-between; color: var(--gold); }
+.mlt-icat ul { list-style: none; margin: 0; padding: 0; }
+.mlt-idea { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; border-right: 3px solid var(--line); }
+.mlt-idea.mlt-status--in_progress { border-right-color: var(--gold); }
+.mlt-idea.mlt-status--done { border-right-color: var(--green); }
+.mlt-idea.mlt-status--done .mlt-idea-title { text-decoration: line-through; color: var(--dim); }
+.mlt-idea-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mlt-idea-title { font-size: 14px; font-weight: 600; }
+.mlt-idea .mlt-tri { margin-top: 8px; }
+.mlt-card, .mlt-idea { scroll-margin-top: 64px; } /* بعد از ذخیره، کارت زیر نوار ثابت بالای ادمین نرود */

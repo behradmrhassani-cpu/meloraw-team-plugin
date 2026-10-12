@@ -20,6 +20,7 @@ define('MLT_CAP', 'manage_meloraw_tasks');
 
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-install.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-rest.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-routines.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-importer.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-admin.php';
 

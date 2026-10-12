@@ -57,6 +57,16 @@ class MLT_REST
             ['POST', 'flag_comment'],
         ]);
 
+        self::route('/routines', [
+            ['GET', 'get_routines', ['period' => ['type' => 'string', 'enum' => array_keys(MLT_Routines::FREQS)]]],
+        ]);
+        self::route('/routines/(?P<key>[A-Za-z0-9._-]{1,32})', [
+            ['PATCH', 'update_routine', [
+                'status'     => ['type' => 'string', 'enum' => self::ENUMS['status'], 'required' => true],
+                'period_key' => ['type' => 'string'],
+            ]],
+        ]);
+
         add_filter('rest_request_before_callbacks', [__CLASS__, 'guard'], 10, 3);
         add_filter('rest_request_after_callbacks', [__CLASS__, 'localize_error'], 10, 3);
         add_filter('rest_post_dispatch', [__CLASS__, 'add_headers'], 10, 3);
@@ -311,6 +321,19 @@ class MLT_REST
         }
         $row['meta'] = $row['meta'] === null ? null : json_decode($row['meta'], true);
         return $row;
+    }
+
+    // ---- routines ----
+
+    public static function get_routines(WP_REST_Request $request)
+    {
+        return rest_ensure_response(MLT_Routines::views($request->get_param('period')));
+    }
+
+    /** Sets the state of the routine's current period; period_key, if sent, must still be the current one. */
+    public static function update_routine(WP_REST_Request $request)
+    {
+        return MLT_Routines::set_status((string) $request['key'], $request['status'], $request->get_param('period_key'));
     }
 
     // ---- comments ----

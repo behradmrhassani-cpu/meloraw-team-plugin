@@ -151,10 +151,33 @@ run_status() {
   req GET "/tasks?status=in_progress"; expect_code 200 "فیلتر in_progress"
 }
 
+# فقط خواندن و اعتبارسنجی؛ وضعیت هیچ روتینی را عوض نمی‌کند (روتین‌ها حذف‌شدنی نیستند)
+run_routines() {
+  echo "== روتین‌ها"
+  req GET /routines "" -;                          expect_code 401 "خواندن روتین‌ها بدون توکن"
+  req PATCH /routines/zz-none '{"status":"done"}' -; expect_code 401 "تغییر روتین بدون توکن"
+  req GET /routines;                               expect_code 200 "خواندن روتین‌ها با رمز"
+  expect_jq 'type' 'array' "خروجی آرایه است"
+  expect_jq 'all(.[]; (keys | sort) == ["description","frequency","key","owner","period_key","status","task_id","title"])' 'true' "ساختار هر روتین"
+  expect_jq 'all(.[]; .frequency as $f | (.period_key | test(if $f == "daily" then "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" elif $f == "weekly" then "^[0-9]{4}-W[0-9]{2}$" else "^[0-9]{4}-[0-9]{2}$" end)))' 'true' "کلید دوره با تناوب می‌خواند"
+  req GET "/routines?period=yearly";               expect_code 400 "تناوب نامعتبر"
+  expect_jq '.code' 'mlt_invalid_param' "کد خطای تناوب نامعتبر"
+  expect_persian "پیام تناوب نامعتبر فارسی است"
+  req PATCH /routines/zz-none '{"status":"archived"}'; expect_code 400 "وضعیت نامعتبر روتین"
+  req PATCH /routines/zz-none '{}';                expect_code 400 "روتین بدون وضعیت"
+  expect_jq '.code' 'mlt_missing_param' "کد خطای وضعیت الزامی"
+  req PATCH /routines/zz-none '{"status":"done"}'; expect_code 404 "روتین ناموجود"
+  expect_persian "پیام روتین ناموجود فارسی است"
+  if [ -n "${MLT_AUTH_NOCAP:-}" ]; then
+    req GET /routines "" "$MLT_AUTH_NOCAP";       expect_code 403 "خواندن روتین‌ها بدون نقش ادمین"
+    req PATCH /routines/zz-none '{"status":"done"}' "$MLT_AUTH_NOCAP"; expect_code 403 "تغییر روتین بدون نقش ادمین"
+  fi
+}
+
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

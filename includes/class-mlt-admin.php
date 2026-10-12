@@ -7,6 +7,8 @@ class MLT_Admin
 {
     const SLUG = 'meloraw-tasks';
     const IMPORT_SLUG = 'meloraw-tasks-import';
+    const ROUTINES_SLUG = 'meloraw-tasks-routines';
+    const IDEAS_SLUG = 'meloraw-tasks-ideas';
 
     const LABELS = [
         'status'   => ['open' => 'انجام نشده', 'in_progress' => 'در حال انجام', 'done' => 'انجام‌شده'],
@@ -25,6 +27,8 @@ class MLT_Admin
         add_action('admin_post_mlt_set_status', [__CLASS__, 'handle_set_status']);
         add_action('admin_post_mlt_add_comment', [__CLASS__, 'handle_add_comment']);
         add_action('admin_post_mlt_import', [__CLASS__, 'handle_import']);
+        add_action('admin_post_mlt_routine_status', [__CLASS__, 'handle_routine_status']);
+        add_action('admin_post_mlt_idea_status', [__CLASS__, 'handle_idea_status']);
         add_action('admin_post_mlt_flag_comment', [__CLASS__, 'handle_flag_comment']);
     }
 
@@ -32,13 +36,15 @@ class MLT_Admin
     {
         add_menu_page('تسک‌های تیم', 'تسک‌های تیم', MLT_CAP, self::SLUG, [__CLASS__, 'render_board'], 'dashicons-list-view', 3);
         add_submenu_page(self::SLUG, 'برد تسک‌ها', 'برد', MLT_CAP, self::SLUG, [__CLASS__, 'render_board']);
+        add_submenu_page(self::SLUG, 'روتین‌ها', 'روتین‌ها', MLT_CAP, self::ROUTINES_SLUG, [__CLASS__, 'render_routines']);
+        add_submenu_page(self::SLUG, 'بانک ایده‌ها', 'بانک ایده‌ها', MLT_CAP, self::IDEAS_SLUG, [__CLASS__, 'render_ideas']);
         add_submenu_page(self::SLUG, 'ایمپورت از فایل قدیمی', 'ایمپورت', MLT_CAP, self::IMPORT_SLUG, [__CLASS__, 'render_import']);
     }
 
     public static function assets($hook)
     {
         $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
-        if (!in_array($page, [self::SLUG, self::IMPORT_SLUG], true)) {
+        if (!in_array($page, [self::SLUG, self::IMPORT_SLUG, self::ROUTINES_SLUG, self::IDEAS_SLUG], true)) {
             return;
         }
         // Version by file mtime so browser/LiteSpeed/Cloudflare caches refetch the CSS after every deploy.
@@ -446,14 +452,14 @@ class MLT_Admin
     }
 
     /** $on_ok($data) returns [success message, extra redirect args]; $always is added to the redirect either way. */
-    private static function call_and_redirect($method, $route, array $body, callable $on_ok, array $always = [])
+    private static function call_and_redirect($method, $route, array $body, callable $on_ok, array $always = [], $page = self::SLUG, $anchor = '')
     {
         $request = new WP_REST_Request($method, '/' . MLT_REST::NS . $route);
         $request->set_body_params($body);
         $response = rest_do_request($request);
         $data = $response->get_data();
 
-        $args = ['page' => self::SLUG] + $always;
+        $args = $always;
         if ($response->is_error()) {
             $notice = ['type' => 'error', 'msg' => 'انجام نشد: ' . ($data['message'] ?? '')];
         } else {
@@ -461,9 +467,192 @@ class MLT_Admin
             $notice = ['type' => 'ok', 'msg' => $msg];
             $args += $extra;
         }
+        self::redirect_with($notice, $page, $args, $anchor);
+    }
+
+    /** $anchor ("#id") brings the browser back to the item that was changed. */
+    private static function redirect_with(array $notice, $page, array $args, $anchor)
+    {
         set_transient(self::notice_key(), $notice, MINUTE_IN_SECONDS);
-        wp_safe_redirect(add_query_arg($args, admin_url('admin.php')));
+        wp_safe_redirect(add_query_arg(['page' => $page] + $args, admin_url('admin.php')) . $anchor);
         exit;
+    }
+
+    // ---- routines and idea bank ----
+
+    public static function render_routines()
+    {
+        if (!current_user_can(MLT_CAP)) {
+            wp_die('دسترسی ندارید.');
+        }
+        $groups = [];
+        foreach (MLT_Routines::FREQS as $freq => $label) {
+            $groups[$freq] = ['label' => $label, 'period' => MLT_Routines::period_key($freq), 'items' => []];
+        }
+        foreach (MLT_Routines::views() as $v) {
+            $groups[$v['frequency']]['items'][] = $v;
+        }
+        ?>
+        <div class="mlt" dir="rtl">
+            <header class="mlt-head">
+                <h1>روتین‌ها</h1>
+            </header>
+            <?php self::render_notice(); ?>
+            <p class="mlt-hint">با عوض‌شدن روز، هفته یا ماه (طبق منطقه‌ی زمانی سایت: <code dir="ltr"><?php echo esc_html(wp_timezone_string() === '+00:00' ? 'UTC' : wp_timezone_string()); ?></code>) وضعیت روتین‌ها خودکار از نو شروع می‌شود.</p>
+            <?php foreach ($groups as $g) : ?>
+                <?php $done = count(array_filter($g['items'], function ($v) { return $v['status'] === 'done'; })); ?>
+                <section class="mlt-rsec">
+                    <h2>
+                        <?php echo esc_html($g['label']); ?>
+                        <code dir="ltr"><?php echo esc_html($g['period']); ?></code>
+                        <span class="mlt-count"><?php echo esc_html($done . ' از ' . count($g['items']) . ' انجام‌شده'); ?></span>
+                    </h2>
+                    <?php if (!$g['items']) : ?>
+                        <p class="mlt-empty">روتینی تعریف نشده. فایل قدیمی را از «ایمپورت» وارد کن.</p>
+                    <?php endif; ?>
+                    <div class="mlt-rgrid">
+                        <?php foreach ($g['items'] as $v) : ?>
+                            <article id="mlt-r-<?php echo esc_attr($v['key']); ?>" class="mlt-card mlt-status--<?php echo esc_attr($v['status']); ?>">
+                                <h3><?php echo esc_html($v['title']); ?></h3>
+                                <?php if ($v['description'] !== '') : ?>
+                                    <p><?php echo esc_html(wp_trim_words($v['description'], 30)); ?></p>
+                                <?php endif; ?>
+                                <div class="mlt-meta">
+                                    <span class="mlt-tag mlt-owner--<?php echo esc_attr($v['owner']); ?>"><?php echo esc_html(self::label('owner', $v['owner'])); ?></span>
+                                </div>
+                                <?php self::tri_form('mlt_routine_status', ['key' => $v['key'], 'period_key' => $v['period_key']], 'mlt_routine_' . $v['key'] . '_' . $v['period_key'], $v['status']); ?>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                </section>
+            <?php endforeach; ?>
+        </div>
+        <?php
+    }
+
+    /** Idea bank: tasks of kind "idea", grouped by type then category (type/category/tag live in meta). */
+    public static function render_ideas()
+    {
+        if (!current_user_can(MLT_CAP)) {
+            wp_die('دسترسی ندارید.');
+        }
+        global $wpdb;
+        $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}mlt_tasks WHERE kind = 'idea' ORDER BY id ASC", ARRAY_A);
+
+        $types = ['track' => 'ترک‌ها', 'sfx' => 'افکت‌های صوتی (SFX)'];
+        $groups = [];
+        foreach ($rows as $r) {
+            $meta = json_decode((string) $r['meta'], true);
+            $meta = is_array($meta) ? $meta : [];
+            $type = isset($meta['type']) && is_string($meta['type']) && $meta['type'] !== '' ? $meta['type'] : '—';
+            $cat = isset($meta['category']) && is_string($meta['category']) && $meta['category'] !== '' ? $meta['category'] : 'بدون دسته';
+            $r['tag'] = isset($meta['tag']) && is_string($meta['tag']) ? $meta['tag'] : '';
+            $groups[$type][$cat][] = $r;
+        }
+        $order = array_keys($types);
+        uksort($groups, function ($a, $b) use ($order) {
+            $pa = array_search($a, $order, true);
+            $pb = array_search($b, $order, true);
+            return (($pa === false ? 99 : $pa) <=> ($pb === false ? 99 : $pb)) ?: strcmp($a, $b);
+        });
+        $count_done = function (array $items) {
+            return count(array_filter($items, function ($r) { return $r['status'] === 'done'; }));
+        };
+        ?>
+        <div class="mlt" dir="rtl">
+            <header class="mlt-head">
+                <h1>بانک ایده‌ها</h1>
+            </header>
+            <?php self::render_notice(); ?>
+            <?php if (!$groups) : ?>
+                <p class="mlt-empty">ایده‌ای نیست. فایل قدیمی را از «ایمپورت» وارد کن.</p>
+            <?php endif; ?>
+            <?php foreach ($groups as $type => $cats) : ?>
+                <?php $all = array_merge(...array_values($cats)); ?>
+                <section class="mlt-rsec">
+                    <h2>
+                        <?php echo esc_html($types[$type] ?? $type); ?>
+                        <span class="mlt-count"><?php echo esc_html($count_done($all) . ' از ' . count($all) . ' انجام‌شده'); ?></span>
+                    </h2>
+                    <div class="mlt-rgrid">
+                        <?php foreach ($cats as $cat => $items) : ?>
+                            <section class="mlt-icat">
+                                <h3>
+                                    <?php echo esc_html($cat); ?>
+                                    <span class="mlt-count"><?php echo esc_html($count_done($items) . ' از ' . count($items)); ?></span>
+                                </h3>
+                                <ul>
+                                    <?php foreach ($items as $r) : ?>
+                                        <li id="mlt-i-<?php echo (int) $r['id']; ?>" class="mlt-idea mlt-status--<?php echo esc_attr($r['status']); ?>">
+                                            <div class="mlt-idea-head">
+                                                <span class="mlt-idea-title"><?php echo esc_html($r['title']); ?></span>
+                                                <?php if ($r['tag'] !== '') : ?>
+                                                    <span class="mlt-tag"><?php echo esc_html($r['tag']); ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                            <?php self::tri_form('mlt_idea_status', ['id' => (int) $r['id']], 'mlt_idea_' . (int) $r['id'], $r['status']); ?>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </section>
+                        <?php endforeach; ?>
+                    </div>
+                </section>
+            <?php endforeach; ?>
+        </div>
+        <?php
+    }
+
+    /** Three-state control: one button per status; the current one is disabled and highlighted. */
+    private static function tri_form($action, array $fields, $nonce_action, $current)
+    {
+        ?>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mlt-tri">
+            <input type="hidden" name="action" value="<?php echo esc_attr($action); ?>">
+            <?php foreach ($fields as $name => $value) : ?>
+                <input type="hidden" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($value); ?>">
+            <?php endforeach; ?>
+            <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce($nonce_action)); ?>">
+            <?php foreach (self::LABELS['status'] as $value => $label) : ?>
+                <button type="submit" name="status" value="<?php echo esc_attr($value); ?>" class="mlt-tri-<?php echo esc_attr($value); ?>"<?php echo $value === $current ? ' disabled aria-pressed="true"' : ''; ?>><?php echo esc_html($label); ?></button>
+            <?php endforeach; ?>
+        </form>
+        <?php
+    }
+
+    private static function render_notice()
+    {
+        $notice = get_transient(self::notice_key());
+        delete_transient(self::notice_key());
+        if ($notice) {
+            echo '<div class="mlt-notice mlt-notice--' . esc_attr($notice['type']) . '">' . esc_html($notice['msg']) . '</div>';
+        }
+    }
+
+    public static function handle_routine_status()
+    {
+        $key = isset($_POST['key']) ? sanitize_text_field(wp_unslash($_POST['key'])) : '';
+        $period = isset($_POST['period_key']) ? sanitize_text_field(wp_unslash($_POST['period_key'])) : '';
+        self::verify('mlt_routine_' . $key . '_' . $period);
+        // period_key travels with the form so a page left open across midnight cannot tick the next period
+        self::call_and_redirect('PATCH', '/routines/' . $key, self::posted(['status']) + ['period_key' => $period], function () {
+            return ['وضعیت روتین تغییر کرد.', []];
+        }, [], self::ROUTINES_SLUG, '#mlt-r-' . preg_replace('/[^A-Za-z0-9._-]/', '', $key));
+    }
+
+    /** Ideas are tasks of kind "idea": the state change goes through PATCH /tasks/{id} (and is logged there). */
+    public static function handle_idea_status()
+    {
+        global $wpdb;
+        $id = self::posted_id();
+        self::verify('mlt_idea_' . $id);
+        $kind = $wpdb->get_var($wpdb->prepare("SELECT kind FROM {$wpdb->prefix}mlt_tasks WHERE id = %d", $id));
+        if ($kind !== 'idea') {
+            self::redirect_with(['type' => 'error', 'msg' => 'انجام نشد: ایده پیدا نشد.'], self::IDEAS_SLUG, [], '');
+        }
+        self::call_and_redirect('PATCH', '/tasks/' . $id, self::posted(['status']), function () {
+            return ['وضعیت ایده تغییر کرد.', []];
+        }, [], self::IDEAS_SLUG, '#mlt-i-' . $id);
     }
 
     private static function notice_key()
