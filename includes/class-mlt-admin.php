@@ -12,6 +12,7 @@ class MLT_Admin
     const REPORTS_SLUG = 'meloraw-tasks-reports';
     const LOG_SLUG = 'meloraw-tasks-log';
     const SETTINGS_SLUG = 'meloraw-tasks-settings';
+    const PAGES = [self::SLUG, self::IMPORT_SLUG, self::ROUTINES_SLUG, self::IDEAS_SLUG, self::REPORTS_SLUG, self::LOG_SLUG, self::SETTINGS_SLUG];
 
     const LABELS = [
         'status'   => ['open' => 'انجام نشده', 'in_progress' => 'در حال انجام', 'done' => 'انجام‌شده'],
@@ -23,6 +24,7 @@ class MLT_Admin
     public static function init()
     {
         add_action('admin_menu', [__CLASS__, 'menu']);
+        add_action('admin_init', [__CLASS__, 'send_headers']);
         add_action('admin_enqueue_scripts', [__CLASS__, 'assets']);
         add_action('admin_post_mlt_add_task', [__CLASS__, 'handle_add_task']);
         add_action('admin_post_mlt_delete_task', [__CLASS__, 'handle_delete_task']);
@@ -49,10 +51,28 @@ class MLT_Admin
         add_submenu_page(self::SLUG, 'تنظیمات', 'تنظیمات', MLT_Settings::CAP, self::SETTINGS_SLUG, ['MLT_Settings', 'render']);
     }
 
+    /** The plugin's own pages (admin.php?page=…) and its form handlers (admin-post.php?action=mlt_…): no indexing, no caching. */
+    public static function send_headers()
+    {
+        global $pagenow;
+        $page = isset($_GET['page']) && is_string($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+        $action = isset($_REQUEST['action']) && is_string($_REQUEST['action']) ? sanitize_key(wp_unslash($_REQUEST['action'])) : '';
+        $ours = ($pagenow === 'admin.php' && in_array($page, self::PAGES, true)) || ($pagenow === 'admin-post.php' && strpos($action, 'mlt_') === 0);
+        if ($ours && !headers_sent()) {
+            foreach (MLT_REST::NO_CACHE_HEADERS as $name => $value) {
+                header($name . ': ' . $value);
+            }
+            // wp_die() (e.g. a failed nonce) calls nocache_headers() later and would replace Cache-Control
+            add_filter('nocache_headers', function ($headers) {
+                return MLT_REST::NO_CACHE_HEADERS + $headers;
+            });
+        }
+    }
+
     public static function assets($hook)
     {
         $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
-        if (!in_array($page, [self::SLUG, self::IMPORT_SLUG, self::ROUTINES_SLUG, self::IDEAS_SLUG, self::REPORTS_SLUG, self::LOG_SLUG, self::SETTINGS_SLUG], true)) {
+        if (!in_array($page, self::PAGES, true)) {
             return;
         }
         // Version by file mtime so browser/LiteSpeed/Cloudflare caches refetch the CSS after every deploy.

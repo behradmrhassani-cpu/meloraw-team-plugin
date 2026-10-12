@@ -21,6 +21,16 @@ class MLT_REST
     const TITLE_MAX = 255;
     const BODY_MAX = 10000;
 
+    const RATE_LIMIT = 120; // REST calls per user per window (on top of the Telegram limit)
+    const RATE_WINDOW = 60; // seconds
+
+    /** Sent on every plugin response (REST and admin pages): no indexing, no caching anywhere, LiteSpeed included. */
+    const NO_CACHE_HEADERS = [
+        'X-Robots-Tag'              => 'noindex, nofollow',
+        'Cache-Control'             => 'no-store, private',
+        'X-LiteSpeed-Cache-Control' => 'no-cache',
+    ];
+
     public static function register_routes()
     {
         $filters = [];
@@ -62,6 +72,12 @@ class MLT_REST
         ]);
         self::route('/notify', [
             ['POST', 'notify_free', ['text' => ['type' => 'string', 'required' => true]]],
+        ]);
+        self::route('/export', [
+            ['GET', 'export_all'],
+        ]);
+        self::route('/import', [
+            ['POST', 'import_all', ['dry_run' => ['type' => 'boolean']]],
         ]);
         self::route('/routines', [
             ['GET', 'get_routines', ['period' => ['type' => 'string', 'enum' => array_keys(MLT_Routines::FREQS)]]],
@@ -107,11 +123,19 @@ class MLT_REST
     /**
      * WordPress validates params before permission_callback, so a validation error
      * (which lists allowed values) would reach unauthenticated callers. Replace it.
+     * Callers with access are also counted against the per-user rate limit.
      */
     public static function guard($response, $handler, $request)
     {
-        if (self::is_ours($request) && !current_user_can(MLT_CAP)) {
+        if (!self::is_ours($request)) {
+            return $response;
+        }
+        if (!current_user_can(MLT_CAP)) {
             return self::forbidden();
+        }
+        $wait = MLT_RateLimit::hit('rg', get_current_user_id(), self::RATE_LIMIT, self::RATE_WINDOW);
+        if ($wait) {
+            return new WP_Error('mlt_rate_limited', 'تعداد درخواست‌ها بیش از حد مجاز است؛ ' . $wait . ' ثانیه دیگر دوباره امتحان کن.', ['status' => 429, 'retry_after' => $wait]);
         }
         return $response;
     }
@@ -124,10 +148,14 @@ class MLT_REST
     public static function add_headers($response, $server, $request)
     {
         if (self::is_ours($request)) {
-            $response->header('X-Robots-Tag', 'noindex, nofollow');
-            $response->header('Cache-Control', 'no-store, private');
+            foreach (self::NO_CACHE_HEADERS as $name => $value) {
+                $response->header($name, $value);
+            }
             if ($response->is_error()) {
                 $data = $response->get_data();
+                if (is_array($data) && isset($data['data']['retry_after'])) {
+                    $response->header('Retry-After', (string) (int) $data['data']['retry_after']);
+                }
                 if (is_array($data) && strpos((string) ($data['code'] ?? ''), 'mlt_') !== 0) {
                     $status = $response->get_status();
                     list($code, $message, $fields) = self::persian_error((string) ($data['code'] ?? ''), $status, $data['data']['params'] ?? []);
@@ -317,7 +345,7 @@ class MLT_REST
         return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}mlt_tasks WHERE id = %d", $id), ARRAY_A);
     }
 
-    private static function format_task(array $row)
+    public static function format_task(array $row)
     {
         foreach (['id', 'created_by', 'updated_by'] as $int) {
             $row[$int] = (int) $row[$int];
@@ -348,18 +376,41 @@ class MLT_REST
         return self::notify_result(MLT_Telegram::deliver($request['text'], null));
     }
 
+    /** `true` -> {sent: true}; an error (429 carries retry_after, which add_headers turns into Retry-After) is returned as is. */
     private static function notify_result($result)
     {
-        if ($result === true) {
-            return ['sent' => true];
+        return $result === true ? ['sent' => true] : $result;
+    }
+
+    // ---- export / import ----
+
+    public static function export_all()
+    {
+        $data = MLT_Transfer::export();
+        self::log_activity(null, 'export', sprintf('tasks: %d | comments: %d', count($data['tasks']), count($data['comments'])));
+        return $data;
+    }
+
+    /** Takes the JSON of GET /export, or the old board's file (tasks / routines / ideas). ?dry_run=1 only reports. */
+    public static function import_all(WP_REST_Request $request)
+    {
+        $body = $request->get_body();
+        if (strlen($body) > MLT_Transfer::MAX_BYTES) {
+            return new WP_Error('mlt_too_large', 'فایل بیش از حد بزرگ است.', ['status' => 413]);
         }
-        if ($result->get_error_code() === 'mlt_rate_limited') {
-            $wait = (int) $result->get_error_data()['retry_after'];
-            $response = new WP_REST_Response(['code' => 'mlt_rate_limited', 'message' => $result->get_error_message(), 'data' => ['status' => 429, 'retry_after' => $wait]], 429);
-            $response->header('Retry-After', (string) $wait);
-            return $response;
+        $data = $request->get_json_params();
+        if (!is_array($data)) {
+            return self::bad_request('بدنه‌ی درخواست باید JSON باشد.');
         }
-        return $result;
+        $dry = (bool) $request->get_param('dry_run');
+        if (($data['format'] ?? null) === MLT_Transfer::FORMAT) {
+            return MLT_Transfer::import($data, $dry);
+        }
+        $report = MLT_Importer::run($body, $dry);
+        if (is_wp_error($report)) {
+            return self::bad_request($report->get_error_message());
+        }
+        return ['format' => 'legacy'] + $report;
     }
 
     // ---- routines ----
@@ -453,7 +504,7 @@ class MLT_REST
         ), ARRAY_A);
     }
 
-    private static function format_comment(array $row)
+    public static function format_comment(array $row)
     {
         $user = get_userdata((int) $row['author']);
         return [

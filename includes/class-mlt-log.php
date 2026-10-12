@@ -22,6 +22,7 @@ class MLT_Log
         'comment_convert' => 'تبدیل کامنت به تسک',
         'routine_status'  => 'وضعیت روتین',
         'import'          => 'ایمپورت',
+        'export'          => 'خروجی JSON',
         'settings_update' => 'تنظیمات',
         'telegram_notify' => 'ارسال به تلگرام',
         'telegram_error'  => 'خطای تلگرام',

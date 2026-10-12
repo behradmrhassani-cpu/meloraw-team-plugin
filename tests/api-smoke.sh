@@ -4,7 +4,7 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|hidden|all]
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|headers|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
@@ -18,14 +18,20 @@ CREATED=()
 ok()   { echo "  ✓ $1"; }
 bad()  { echo "  ✗ $1"; FAIL=1; }
 
-# req METHOD PATH [JSON] [AUTH|-]  → sets CODE and BODY
+# req METHOD PATH [JSON] [AUTH|-]  → sets CODE and BODY (and HDRS, the response headers)
+# اگر rate limit کلی (۱۲۰ درخواست در دقیقه برای هر کاربر) فعال شد، به اندازه‌ی Retry-After صبر می‌کند و یک بار دوباره می‌زند.
 req() {
-  local method=$1 path=$2 data=${3:-} auth=${4:-$MLT_AUTH}
-  local args=(-s -o /tmp/mlt_body.$$ -w '%{http_code}' -X "$method" -H 'Content-Type: application/json')
+  local method=$1 path=$2 data=${3:-} auth=${4:-$MLT_AUTH} try
+  local args=(-s -o /tmp/mlt_body.$$ -D /tmp/mlt_hdr.$$ -w '%{http_code}' -X "$method" -H 'Content-Type: application/json')
   [ "$auth" != "-" ] && args+=(-u "$auth")
   [ -n "$data" ] && args+=(--data "$data")
-  CODE=$(curl "${args[@]}" "$MLT_BASE$path")
+  for try in 1 2; do
+    CODE=$(curl "${args[@]}" "$MLT_BASE$path")
+    [ "$CODE" = 429 ] && [ $try = 1 ] && [ "${NO_RETRY:-}" != 1 ] || break
+    sleep "$(tr -d '\r' < /tmp/mlt_hdr.$$ | awk -F': ' 'tolower($1)=="retry-after"{print $2}' | head -1)"
+  done
   BODY=$(cat /tmp/mlt_body.$$)
+  HDRS=$(tr -d '\r' < /tmp/mlt_hdr.$$)
 }
 
 expect_code() { [ "$CODE" = "$1" ] && ok "$2 → $CODE" || bad "$2 → $CODE (انتظار $1): $BODY"; }
@@ -42,7 +48,7 @@ new_task() {
 
 cleanup() {
   for id in "${CREATED[@]}"; do req DELETE "/tasks/$id"; done
-  rm -f /tmp/mlt_body.$$
+  rm -f /tmp/mlt_body.$$ /tmp/mlt_hdr.$$
 }
 trap cleanup EXIT
 
@@ -204,10 +210,83 @@ run_notify() {
   fi
 }
 
+# هدرهای امنیتی/کش روی همه‌ی پاسخ‌های REST افزونه (موفق، خطا، بدون توکن)
+expect_hdr() { echo "$HDRS" | grep -qiE "^$1: .*$2" && ok "$3" || bad "$3 (هدر $1 نیست)"; }
+run_headers() {
+  echo "== هدرهای امنیتی و کش"
+  local label code
+  for label in "بدون توکن|GET|/tasks|-|401" "با توکن|GET|/tasks|$MLT_AUTH|200" "مسیر ناموجود|GET|/nope|$MLT_AUTH|404" "ورودی نامعتبر|POST|/tasks|$MLT_AUTH|400"; do
+    IFS='|' read -r name method path auth code <<<"$label"
+    req "$method" "$path" "$([ "$method" = POST ] && echo '{"title":""}')" "$auth"
+    expect_code "$code" "$name"
+    expect_hdr 'X-Robots-Tag' 'noindex, nofollow' "  X-Robots-Tag"
+    expect_hdr 'Cache-Control' 'no-store' "  Cache-Control: no-store"
+    expect_hdr 'X-LiteSpeed-Cache-Control' 'no-cache' "  X-LiteSpeed-Cache-Control"
+  done
+}
+
+# export / import: فقط ادمین؛ تکراری‌ها (legacy_id، یا عنوان برای ردیف بدون legacy_id) وارد نمی‌شوند
+run_export() {
+  echo "== export و import"
+  req GET /export "" -;                            expect_code 401 "export بدون توکن"
+  req POST /import '{}' -;                         expect_code 401 "import بدون توکن"
+  if [ -n "${MLT_AUTH_NOCAP:-}" ]; then
+    req GET /export "" "$MLT_AUTH_NOCAP";          expect_code 403 "export بدون نقش ادمین"
+    req POST /import '{}' "$MLT_AUTH_NOCAP";       expect_code 403 "import بدون نقش ادمین"
+  fi
+  req GET /export;                                 expect_code 200 "export با ادمین"
+  expect_jq '.format' 'meloraw-tasks-export' "نام قالب"
+  expect_jq '(.tasks|type) + (.comments|type)' 'arrayarray' "tasks و comments آرایه‌اند"
+  expect_hdr 'X-Robots-Tag' 'noindex' "  X-Robots-Tag روی export"
+  echo "$BODY" | jq -e '[.. | objects | keys[] | select(test("pass|token|secret|mail|hash";"i"))] | length == 0' >/dev/null && ok "هیچ فیلد حساسی در خروجی نیست" || bad "فیلد حساس در export"
+  local before; before=$(echo "$BODY" | jq '.tasks|length')
+
+  req POST /import 'not json';                     expect_code 400 "import با متن غیر JSON"
+  expect_persian "پیام JSON نامعتبر فارسی است"
+  req POST /import '{"format":"meloraw-tasks-export","version":99,"tasks":[]}'; expect_code 400 "import با version نامعتبر"
+  req POST /import '{"format":"meloraw-tasks-export","version":1,"tasks":[{"title":"","owner":"you"},{"title":"x","owner":"nobody"}]}'
+  expect_code 200 "ردیف نامعتبر گزارش می‌شود، خطا نمی‌دهد"
+  expect_jq '.tasks.invalid' '2' "دو ردیف نامعتبر"
+
+  local key="smoke_$$_$(date +%s)"
+  local file='{"format":"meloraw-tasks-export","version":1,"tasks":[{"id":1,"legacy_id":"'$key'","title":"smoke import '$key'","owner":"you"},{"id":2,"title":"smoke untitled-key '$key'","owner":"you"}],"comments":[{"id":1,"task_id":1,"body":"smoke comment"}]}'
+  req POST "/import?dry_run=1" "$file";            expect_code 200 "import آزمایشی (dry_run)"
+  expect_jq '.dry' 'true' "dry_run: چیزی نوشته نمی‌شود"
+  req GET /export; expect_jq '.tasks|length' "$before" "بعد از dry_run تعداد تسک‌ها همان است"
+  req POST /import "$file";                        expect_code 200 "import واقعی"
+  expect_jq '[.tasks.created,.comments.created]|join(",")' '2,1' "دو تسک و یک کامنت ساخته شد"
+  req POST /import "$file";                        expect_code 200 "import دوباره"
+  expect_jq '[.tasks.created,.tasks.duplicate,.comments.created]|join(",")' '0,2,0' "هر دو تکراری‌اند (legacy_id و عنوان)، کامنتی اضافه نشد"
+  req GET /export
+  for id in $(echo "$BODY" | jq -r --arg k "$key" '.tasks[] | select(.title | contains($k)) | .id'); do CREATED+=("$id"); done
+  expect_jq "[.tasks[] | select(.title | contains(\"$key\"))] | length" '2' "دو تسک تستی در export هست"
+}
+
+# سقف کلی: ۱۲۰ درخواست در دقیقه برای هر کاربر. کاربر آزمون را تا یک دقیقه مسدود می‌کند، پس جزو all نیست.
+run_ratelimit() {
+  echo "== rate limit کلی (تا یک دقیقه طول می‌کشد)"
+  local i n429=0 ok200=0 wait=
+  NO_RETRY=1
+  for i in $(seq 1 140); do
+    req GET /tasks/999999999
+    if [ "$CODE" = 429 ]; then n429=$((n429+1)); wait=$(echo "$HDRS" | awk -F': ' 'tolower($1)=="retry-after"{print $2}'); break; else ok200=$((ok200+1)); fi
+  done
+  [ $n429 -gt 0 ] && ok "بعد از $ok200 درخواست، ۴۲۹ آمد" || bad "تا ۱۴۰ درخواست ۴۲۹ نیامد"
+  expect_jq '.code' 'mlt_rate_limited' "کد خطا"
+  expect_persian "پیام ۴۲۹ فارسی است"
+  [ -n "$wait" ] && [ "$wait" -ge 1 ] && [ "$wait" -le 60 ] && ok "Retry-After = $wait" || bad "Retry-After نامعتبر: '$wait'"
+  expect_hdr 'X-Robots-Tag' 'noindex' "  X-Robots-Tag روی ۴۲۹"
+  expect_hdr 'Cache-Control' 'no-store' "  Cache-Control روی ۴۲۹"
+  req GET /tasks "" -; expect_code 401 "بدون توکن ۴۰۱ می‌ماند (نه ۴۲۹ و نه شمارش)"
+  sleep "$((wait + 1))"
+  req GET /tasks/999999999;                        expect_code 404 "بعد از Retry-After دوباره پاسخ عادی می‌دهد"
+  NO_RETRY=
+}
+
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; hidden) run_hidden ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; headers) run_headers ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_headers; run_export; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

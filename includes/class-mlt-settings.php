@@ -12,6 +12,7 @@ class MLT_Settings
 {
     const OPTION = 'mlt_settings';
     const CAP = 'manage_options'; // administrators only, even if MLT_CAP is given to other roles later
+    const DELETE_FLAG = 'delete_on_uninstall'; // read by uninstall.php; off unless someone ticks it
 
     /** field => constant that wp-config.php may define instead (then it wins and the field is locked) */
     const FIELDS = [
@@ -85,12 +86,18 @@ class MLT_Settings
             }
         }
 
+        if (!empty($_POST[self::DELETE_FLAG])) {
+            $new[self::DELETE_FLAG] = '1';
+        } else {
+            unset($new[self::DELETE_FLAG]);
+        }
+
         if ($errors) {
             MLT_Admin::redirect_with(['type' => 'error', 'msg' => 'ذخیره نشد: ' . implode(' ', $errors)], MLT_Admin::SETTINGS_SLUG, [], '');
         }
-        $changed = array_keys(array_filter(self::FIELDS, function ($c, $f) use ($old, $new) {
+        $changed = array_values(array_filter(array_merge(array_keys(self::FIELDS), [self::DELETE_FLAG]), function ($f) use ($old, $new) {
             return ($old[$f] ?? null) !== ($new[$f] ?? null);
-        }, ARRAY_FILTER_USE_BOTH));
+        }));
         if ($changed) {
             update_option(self::OPTION, $new, false); // not autoloaded: the token is not read on every request
             MLT_REST::log_activity(null, 'settings_update', 'fields: ' . implode(', ', $changed)); // names only, never values
@@ -134,6 +141,9 @@ class MLT_Settings
                 <?php if (!$locked('telegram_bot_token') && !empty($s['telegram_bot_token'])) : ?>
                     <label class="mlt-check"><input type="checkbox" name="clear_token" value="1"> توکن ذخیره‌شده پاک شود</label>
                 <?php endif; ?>
+                <h2 class="mlt-sub">حذف افزونه</h2>
+                <label class="mlt-check"><input type="checkbox" name="delete_on_uninstall" value="1"<?php checked(!empty($s[self::DELETE_FLAG])); ?>> هنگام حذف افزونه از وردپرس، همه‌ی داده‌ها (تسک‌ها، کامنت‌ها، لاگ و تنظیمات) برای همیشه پاک شود</label>
+                <p class="mlt-hint">پیش‌فرض خاموش است: با حذف افزونه هیچ داده‌ای پاک نمی‌شود. اگر روشنش کنی، «حذف» افزونه از صفحه‌ی افزونه‌های وردپرس بدون هیچ تأیید دیگری همه‌چیز را پاک می‌کند؛ قبلش از <code dir="ltr">GET /export</code> خروجی بگیر.</p>
                 <div><button type="submit" class="mlt-btn">ذخیره</button></div>
             </form>
         </div>

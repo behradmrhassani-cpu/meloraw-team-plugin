@@ -127,27 +127,9 @@ class MLT_Telegram
         return new WP_Error('mlt_telegram_failed', 'ارسال به تلگرام انجام نشد: ' . self::REASONS[$reason], ['status' => $status, 'reason' => $reason]);
     }
 
-    /**
-     * Per-user fixed-window limit. The counter is one options row per user and window. The row is created
-     * with INSERT IGNORE, then raised by a single atomic UPDATE whose LAST_INSERT_ID(expr) hands back this
-     * request's own count (not an INSERT: there MySQL would return the new row's auto-increment id), so
-     * parallel requests cannot slip past the limit. Returns 0 if allowed, else the seconds until the window ends.
-     */
+    /** Per-user limit for sending (see MLT_RateLimit). Returns 0 if allowed, else the seconds until the window ends. */
     public static function throttle($user_id)
     {
-        global $wpdb;
-        $user_id = (int) $user_id;
-        $name = 'mlt_rl_' . $user_id . '_' . (int) floor(time() / self::WINDOW);
-        $wpdb->query($wpdb->prepare("INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, '0', 'no')", $name));
-        $wpdb->query($wpdb->prepare("UPDATE {$wpdb->options} SET option_value = LAST_INSERT_ID(option_value + 1) WHERE option_name = %s", $name));
-        $count = (int) $wpdb->get_var('SELECT LAST_INSERT_ID()');
-        if ($count === 1) { // first hit of a new window: forget this user's older windows
-            $wpdb->query($wpdb->prepare(
-                "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name <> %s",
-                $wpdb->esc_like('mlt_rl_' . $user_id . '_') . '%',
-                $name
-            ));
-        }
-        return $count > self::LIMIT ? self::WINDOW - (time() % self::WINDOW) : 0;
+        return MLT_RateLimit::hit('rl', $user_id, self::LIMIT, self::WINDOW);
     }
 }
