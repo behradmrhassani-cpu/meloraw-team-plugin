@@ -8,7 +8,11 @@ if (!defined('ABSPATH')) {
  * comments) as one JSON document, and the way back in.
  *
  * Nothing sensitive is in the export: no settings, token, e-mail or password hash, and no activity
- * log. Users appear as logins only; importing maps a login to a user on this site, else to the importer.
+ * log. Users appear as logins only, for reading.
+ *
+ * Import never trusts who or when: the *_login fields, the comments' agent and every created_at / updated_at
+ * in the file are ignored. All imported rows belong to the user who imported (and the Application Password
+ * name they used) and are stamped with the import time, so a file cannot forge another admin or agent.
  *
  * Import skips duplicates: a row with a legacy_id is a duplicate when that legacy_id exists; a row
  * without one is a duplicate when a task with the same title existed before the import began. Comments
@@ -241,20 +245,15 @@ class MLT_Transfer
             return 'source_comment_id نامعتبر است';
         }
 
-        $created = self::date($r, 'created_at', $now);
-        $updated = self::date($r, 'updated_at', $created);
-        if ($created === null || $updated === null) {
-            return 'created_at یا updated_at نامعتبر است';
-        }
         return $row + [
             'recurrence'        => $recurrence,
             'period_key'        => $period,
             'source_comment_id' => $source,
             'meta'              => $meta ? wp_json_encode($meta, JSON_UNESCAPED_UNICODE) : null,
-            'created_by'        => self::user($r['created_by_login'] ?? null, $me),
-            'created_at'        => $created,
-            'updated_by'        => self::user($r['updated_by_login'] ?? null, $me),
-            'updated_at'        => $updated,
+            'created_by'        => $me,
+            'created_at'        => $now,
+            'updated_by'        => $me,
+            'updated_at'        => $now,
         ];
     }
 
@@ -270,20 +269,12 @@ class MLT_Transfer
         if (mb_strlen($body) > MLT_REST::BODY_MAX) {
             return 'متن کامنت بیش از حد طولانی است';
         }
-        $agent = $r['agent'] ?? null;
-        if ($agent !== null && !is_string($agent)) {
-            return 'agent نامعتبر است';
-        }
-        $created = self::date($r, 'created_at', $now);
-        if ($created === null) {
-            return 'created_at نامعتبر است';
-        }
         return [
             'body'       => $body,
-            'author'     => self::user($r['author_login'] ?? null, $me),
-            'agent'      => $agent === null || $agent === '' ? null : mb_substr(sanitize_text_field($agent), 0, 100),
+            'author'     => $me,
+            'agent'      => MLT_REST::current_agent(),
             'flagged'    => !empty($r['flagged']) ? 1 : 0,
-            'created_at' => $created,
+            'created_at' => $now,
         ];
     }
 
@@ -307,20 +298,6 @@ class MLT_Transfer
             return 'meta.routine_id نامعتبر است';
         }
         return $clean;
-    }
-
-    /** $r[$field] as a 'Y-m-d H:i:s' string; $default when the field is missing; null when it is malformed. */
-    private static function date(array $r, $field, $default)
-    {
-        $value = $r[$field] ?? $default;
-        $date = is_string($value) ? DateTime::createFromFormat('Y-m-d H:i:s', $value) : false;
-        return $date && $date->format('Y-m-d H:i:s') === $value ? $value : null;
-    }
-
-    private static function user($login, $me)
-    {
-        $user = is_string($login) && $login !== '' ? get_user_by('login', $login) : false;
-        return $user ? (int) $user->ID : $me;
     }
 
     private static function reject(array &$report, $section, $item, $index, $reason)

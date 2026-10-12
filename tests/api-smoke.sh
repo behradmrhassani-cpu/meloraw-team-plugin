@@ -4,7 +4,7 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|headers|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
@@ -262,6 +262,29 @@ run_export() {
   expect_jq "[.tasks[] | select(.title | contains(\"$key\"))] | length" '2' "دو تسک تستی در export هست"
 }
 
+# رمزهای Claude-… و Hermes-… فقط روی /meloraw-tasks/v1 کار می‌کنند؛ namespace افزونه در فهرست عمومی نیست.
+#   MLT_AUTH_IS_AGENT=1   یعنی MLT_AUTH نامش با Claude- یا Hermes- شروع می‌شود (بررسی ۴۰۳ روی مسیرهای دیگر)
+#   MLT_AUTH_OTHER=user:pass   یک Application Password با نام دیگر (باید روی مسیرهای دیگر هم کار کند)
+run_scope() {
+  echo "== محدوده‌ی رمز ایجنت‌ها و پنهان‌بودن namespace"
+  local root=${MLT_BASE%/meloraw-tasks/v1} idx
+  idx=$(curl -s "$root/")
+  echo "$idx" | jq -e '(.namespaces | index("meloraw-tasks/v1")) == null' >/dev/null && ok "namespace در فهرست عمومی نیست" || bad "namespace در /wp-json/ دیده می‌شود"
+  [ "$(echo "$idx" | grep -c meloraw)" = 0 ] && ok "هیچ اشاره‌ای به افزونه در فهرست عمومی نیست" || bad "در فهرست عمومی اشاره به افزونه هست"
+  req GET /tasks "" -;                             expect_code 401 "مسیر namespace هنوز ۴۰۱ می‌دهد"
+  if [ "${MLT_AUTH_IS_AGENT:-}" = 1 ]; then
+    for path in /wp/v2/users/me /wp/v2/plugins /wp/v2/users/me/application-passwords /; do
+      CODE=$(curl -s -o /tmp/mlt_body.$$ -w '%{http_code}' -u "$MLT_AUTH" "$root$path"); BODY=$(cat /tmp/mlt_body.$$)
+      expect_code 403 "رمز ایجنت روی $path"
+    done
+    expect_jq '.code' 'mlt_agent_scope' "کد خطای محدوده"
+    req GET /tasks;                                expect_code 200 "رمز ایجنت روی مسیر افزونه کار می‌کند"
+  fi
+  if [ -n "${MLT_AUTH_OTHER:-}" ]; then
+    CODE=$(curl -s -o /dev/null -w '%{http_code}' -u "$MLT_AUTH_OTHER" "$root/wp/v2/users/me"); expect_code 200 "رمز با نام دیگر روی /wp/v2 دست‌نخورده است"
+  fi
+}
+
 # سقف کلی: ۱۲۰ درخواست در دقیقه برای هر کاربر. کاربر آزمون را تا یک دقیقه مسدود می‌کند، پس جزو all نیست.
 run_ratelimit() {
   echo "== rate limit کلی (تا یک دقیقه طول می‌کشد)"
@@ -285,8 +308,8 @@ run_ratelimit() {
 
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; headers) run_headers ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_headers; run_export; run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_headers; run_scope; run_export; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

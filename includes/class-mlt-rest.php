@@ -395,7 +395,7 @@ class MLT_REST
         return $data;
     }
 
-    /** Takes the JSON of GET /export, or the old board's file (tasks / routines / ideas). ?dry_run=1 only reports. */
+    /** Takes the JSON of GET /export, or the old board's file (tasks / routines / ideas). ?dry_run=1 only reports. Authors, agent names and dates in the file are ignored. */
     public static function import_all(WP_REST_Request $request)
     {
         $body = $request->get_body();
@@ -410,7 +410,7 @@ class MLT_REST
         if (($data['format'] ?? null) === MLT_Transfer::FORMAT) {
             return MLT_Transfer::import($data, $dry);
         }
-        $report = MLT_Importer::run($body, $dry);
+        $report = MLT_Importer::run($body, $dry, false);
         if (is_wp_error($report)) {
             return self::bad_request($report->get_error_message());
         }

@@ -1,7 +1,7 @@
 <?php
 /**
  * Runs when the plugin is deleted from the WordPress plugins screen.
- * By default nothing is removed: the data is only deleted if someone ticked
+ * The Telegram bot token is always removed. Everything else stays unless someone ticked
  * "delete all data on uninstall" on the settings page (mlt_settings[delete_on_uninstall]).
  */
 if (!defined('WP_UNINSTALL_PLUGIN')) {
@@ -9,7 +9,15 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 }
 
 $settings = get_option('mlt_settings', []);
-if (!is_array($settings) || empty($settings['delete_on_uninstall'])) {
+$settings = is_array($settings) ? $settings : [];
+
+// The bot token is a secret: it is removed on every uninstall, whatever the flag says.
+if (isset($settings['telegram_bot_token'])) {
+    unset($settings['telegram_bot_token']);
+    update_option('mlt_settings', $settings, false);
+}
+
+if (empty($settings['delete_on_uninstall'])) {
     return;
 }
 

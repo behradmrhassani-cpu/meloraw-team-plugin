@@ -25,7 +25,7 @@ class MLT_Importer
     /**
      * @return array|WP_Error report: dry, sections[name] => created|duplicate|invalid, reasons[], ignored_comments
      */
-    public static function run($raw, $dry)
+    public static function run($raw, $dry, $keep_dates = true)
     {
         global $wpdb;
 
@@ -36,6 +36,16 @@ class MLT_Importer
         foreach (array_keys(self::SECTIONS) as $section) {
             if (isset($data[$section]) && !is_array($data[$section])) {
                 return new WP_Error('mlt_import_format', 'بخش ' . $section . ' باید آرایه باشد.');
+            }
+        }
+
+        if (!$keep_dates) { // an upload over the API must not backdate rows
+            foreach (array_keys(self::SECTIONS) as $section) {
+                foreach ((array) ($data[$section] ?? []) as $i => $item) {
+                    if (is_array($item)) {
+                        unset($data[$section][$i]['created_at']);
+                    }
+                }
             }
         }
 
