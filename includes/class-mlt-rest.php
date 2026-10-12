@@ -38,7 +38,7 @@ class MLT_REST
             return true;
         }
         // Generic error only; no detail for unauthenticated callers.
-        return new WP_Error('mlt_forbidden', 'Forbidden', ['status' => rest_authorization_required_code()]);
+        return new WP_Error('mlt_forbidden', 'دسترسی ندارید.', ['status' => rest_authorization_required_code()]);
     }
 
     public static function add_headers($response, $server, $request)

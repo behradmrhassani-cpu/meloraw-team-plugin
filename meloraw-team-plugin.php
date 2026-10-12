@@ -20,7 +20,9 @@ define('MLT_CAP', 'manage_meloraw_tasks');
 
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-install.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-rest.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-admin.php';
 
 register_activation_hook(__FILE__, ['MLT_Install', 'activate']);
 add_action('plugins_loaded', ['MLT_Install', 'maybe_upgrade']);
 add_action('rest_api_init', ['MLT_REST', 'register_routes']);
+MLT_Admin::init();
