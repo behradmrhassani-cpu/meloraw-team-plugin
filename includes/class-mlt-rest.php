@@ -418,7 +418,7 @@ class MLT_REST
     }
 
     /** Who did what: the user, plus the Application Password name when the call came from an agent. */
-    private static function log_activity($task_id, $action, $summary)
+    public static function log_activity($task_id, $action, $summary)
     {
         global $wpdb;
         $wpdb->insert("{$wpdb->prefix}mlt_activity_log", [

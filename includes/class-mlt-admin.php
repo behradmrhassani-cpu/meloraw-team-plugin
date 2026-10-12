@@ -6,6 +6,7 @@ if (!defined('ABSPATH')) {
 class MLT_Admin
 {
     const SLUG = 'meloraw-tasks';
+    const IMPORT_SLUG = 'meloraw-tasks-import';
 
     const LABELS = [
         'status'   => ['open' => 'انجام نشده', 'in_progress' => 'در حال انجام', 'done' => 'انجام‌شده'],
@@ -23,17 +24,21 @@ class MLT_Admin
         add_action('admin_post_mlt_edit_task', [__CLASS__, 'handle_edit_task']);
         add_action('admin_post_mlt_set_status', [__CLASS__, 'handle_set_status']);
         add_action('admin_post_mlt_add_comment', [__CLASS__, 'handle_add_comment']);
+        add_action('admin_post_mlt_import', [__CLASS__, 'handle_import']);
         add_action('admin_post_mlt_flag_comment', [__CLASS__, 'handle_flag_comment']);
     }
 
     public static function menu()
     {
         add_menu_page('تسک‌های تیم', 'تسک‌های تیم', MLT_CAP, self::SLUG, [__CLASS__, 'render_board'], 'dashicons-list-view', 3);
+        add_submenu_page(self::SLUG, 'برد تسک‌ها', 'برد', MLT_CAP, self::SLUG, [__CLASS__, 'render_board']);
+        add_submenu_page(self::SLUG, 'ایمپورت از فایل قدیمی', 'ایمپورت', MLT_CAP, self::IMPORT_SLUG, [__CLASS__, 'render_import']);
     }
 
     public static function assets($hook)
     {
-        if ($hook !== 'toplevel_page_' . self::SLUG) {
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+        if (!in_array($page, [self::SLUG, self::IMPORT_SLUG], true)) {
             return;
         }
         // Version by file mtime so browser/LiteSpeed/Cloudflare caches refetch the CSS after every deploy.
@@ -207,6 +212,121 @@ class MLT_Admin
             </div>
         </div>
         <?php
+    }
+
+    public static function render_import()
+    {
+        if (!current_user_can(MLT_CAP)) {
+            wp_die('دسترسی ندارید.');
+        }
+        $notice = get_transient(self::notice_key());
+        $report = get_transient(self::report_key());
+        delete_transient(self::notice_key());
+        delete_transient(self::report_key());
+        ?>
+        <div class="mlt" dir="rtl">
+            <header class="mlt-head">
+                <h1>ایمپورت از فایل JSON قدیمی</h1>
+            </header>
+            <?php if ($notice) : ?>
+                <div class="mlt-notice mlt-notice--<?php echo esc_attr($notice['type']); ?>"><?php echo esc_html($notice['msg']); ?></div>
+            <?php endif; ?>
+            <?php if ($report) : ?>
+                <?php self::render_report($report); ?>
+            <?php endif; ?>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" class="mlt-import">
+                <input type="hidden" name="action" value="mlt_import">
+                <?php wp_nonce_field('mlt_import'); ?>
+                <p class="mlt-hint">فایل <code dir="ltr">tasks-export.json</code> را انتخاب کن (حداکثر ۲ مگابایت). تسک‌ها، روتین‌ها و ایده‌ها وارد می‌شوند؛ کامنت و پرچم هرگز وارد نمی‌شوند. مورد تکراری (بر اساس شناسه‌ی قدیمی) دوباره ساخته نمی‌شود، پس اجرای دوباره بی‌خطر است. فایل روی سرور ذخیره نمی‌شود.</p>
+                <label class="mlt-field">فایل JSON
+                    <input type="file" name="file" accept=".json,application/json" required>
+                </label>
+                <label class="mlt-check"><input type="checkbox" name="dry_run" value="1"> فقط بررسی کن، چیزی ذخیره نشود</label>
+                <div><button type="submit" class="mlt-btn">شروع ایمپورت</button></div>
+            </form>
+        </div>
+        <?php
+    }
+
+    private static function render_report(array $report)
+    {
+        $total = ['created' => 0, 'duplicate' => 0, 'invalid' => 0];
+        ?>
+        <div class="mlt-report">
+            <h2><?php echo $report['dry'] ? 'نتیجه‌ی بررسی (چیزی ذخیره نشد)' : 'نتیجه‌ی ایمپورت'; ?></h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>بخش</th>
+                        <th><?php echo $report['dry'] ? 'ساخته می‌شد' : 'ساخته شد'; ?></th>
+                        <th>تکراری (رد شد)</th>
+                        <th>نامعتبر (رد شد)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($report['sections'] as $section => $n) : ?>
+                        <?php foreach ($total as $key => $sum) { $total[$key] += $n[$key]; } ?>
+                        <tr>
+                            <td><?php echo esc_html(MLT_Importer::SECTIONS[$section]); ?></td>
+                            <td><?php echo esc_html($n['created']); ?></td>
+                            <td><?php echo esc_html($n['duplicate']); ?></td>
+                            <td><?php echo esc_html($n['invalid']); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <tr class="mlt-total">
+                        <td>جمع</td>
+                        <td><?php echo esc_html($total['created']); ?></td>
+                        <td><?php echo esc_html($total['duplicate']); ?></td>
+                        <td><?php echo esc_html($total['invalid']); ?></td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="mlt-hint">کامنت‌های نادیده‌گرفته‌شده: <?php echo esc_html($report['ignored_comments']); ?></p>
+            <?php if ($report['reasons']) : ?>
+                <h3>ردیف‌های نامعتبر<?php echo $total['invalid'] > count($report['reasons']) ? ' (' . esc_html(count($report['reasons'])) . ' مورد اول)' : ''; ?></h3>
+                <ul class="mlt-reasons">
+                    <?php foreach ($report['reasons'] as $r) : ?>
+                        <li><?php echo esc_html(MLT_Importer::SECTIONS[$r['section']]); ?> · <code dir="ltr"><?php echo esc_html($r['id']); ?></code> — <?php echo esc_html($r['reason']); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    public static function handle_import()
+    {
+        self::verify('mlt_import');
+
+        $file = isset($_FILES['file']) && is_array($_FILES['file']) ? $_FILES['file'] : null;
+        $error = null;
+        if ($file && in_array($file['error'], [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+            $error = 'حجم فایل بیشتر از حد مجاز است.';
+        } elseif (!$file || $file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
+            $error = 'فایلی دریافت نشد. دوباره امتحان کن.';
+        } elseif (strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) !== 'json') {
+            $error = 'فقط فایل با پسوند json قبول است.';
+        } elseif ($file['size'] > MLT_Importer::MAX_BYTES) {
+            $error = 'حجم فایل بیشتر از ۲ مگابایت است.';
+        } else {
+            // read straight from PHP's temp upload; the file is never moved or stored
+            $result = MLT_Importer::run(file_get_contents($file['tmp_name']), !empty($_POST['dry_run']));
+            if (is_wp_error($result)) {
+                $error = $result->get_error_message();
+            } else {
+                set_transient(self::report_key(), $result, 10 * MINUTE_IN_SECONDS);
+            }
+        }
+        if ($error) {
+            set_transient(self::notice_key(), ['type' => 'error', 'msg' => 'ایمپورت انجام نشد: ' . $error], MINUTE_IN_SECONDS);
+        }
+        wp_safe_redirect(add_query_arg('page', self::IMPORT_SLUG, admin_url('admin.php')));
+        exit;
+    }
+
+    private static function report_key()
+    {
+        return 'mlt_import_report_' . get_current_user_id();
     }
 
     private static function render_add_form()
