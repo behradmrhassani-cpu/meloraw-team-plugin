@@ -4,7 +4,7 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
@@ -167,14 +167,14 @@ run_routines() {
   req PATCH /routines/zz-none '{"status":"done"}' -; expect_code 401 "تغییر روتین بدون توکن"
   req GET /routines;                               expect_code 200 "خواندن روتین‌ها با رمز"
   expect_jq 'type' 'array' "خروجی آرایه است"
-  expect_jq 'all(.[]; (keys | sort) == ["description","frequency","key","owner","period_key","status","task_id","title"])' 'true' "ساختار هر روتین"
+  expect_jq 'all(.[]; (keys | sort) == ["description","done_criteria","estimate_minutes","frequency","incomplete","key","owner","period_key","recurrence_until","status","stopped","task_id","title"])' 'true' "ساختار هر روتین"
   expect_jq 'all(.[]; .frequency as $f | (.period_key | test(if $f == "daily" then "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" elif $f == "weekly" then "^[0-9]{4}-W[0-9]{2}$" else "^[0-9]{4}-[0-9]{2}$" end)))' 'true' "کلید دوره با تناوب می‌خواند"
   req GET "/routines?period=yearly";               expect_code 400 "تناوب نامعتبر"
   expect_jq '.code' 'mlt_invalid_param' "کد خطای تناوب نامعتبر"
   expect_persian "پیام تناوب نامعتبر فارسی است"
   req PATCH /routines/zz-none '{"status":"archived"}'; expect_code 400 "وضعیت نامعتبر روتین"
   req PATCH /routines/zz-none '{}';                expect_code 400 "روتین بدون وضعیت"
-  expect_jq '.code' 'mlt_missing_param' "کد خطای وضعیت الزامی"
+  expect_jq '.code' 'mlt_bad_request' "کد خطا: status یا قالب لازم است"
   req PATCH /routines/zz-none '{"status":"done"}'; expect_code 404 "روتین ناموجود"
   expect_persian "پیام روتین ناموجود فارسی است"
   if [ -n "${MLT_AUTH_NOCAP:-}" ]; then
@@ -286,6 +286,60 @@ run_fields() {
   fi
 }
 
+# زمان تقریبی ثابت: فقط «تمدید» با دلیل؛ روتین‌ها: قالب و توقف
+run_estimate() {
+  echo "== تمدید زمان تقریبی و قالب روتین"
+  local id key today
+  new_task '{"title":"تمدید","estimate_minutes":50}'; id=$NEW_ID
+  req POST "/tasks/$id/extend" '{"estimate_minutes":80,"reason":"x"}' -;  expect_code 401 "تمدید بدون توکن"
+  [ -n "${MLT_AUTH_NOCAP:-}" ] && { req POST "/tasks/$id/extend" '{"estimate_minutes":80,"reason":"دلیل طولانی کافی"}' "$MLT_AUTH_NOCAP"; expect_code 403 "تمدید بدون نقش ادمین"; }
+  req POST "/tasks/$id/extend" '{"estimate_minutes":80}';                  expect_code 400 "تمدید بدون دلیل"
+  req POST "/tasks/$id/extend" '{"estimate_minutes":80,"reason":"کوتاه"}'; expect_code 400 "دلیل کمتر از ۱۰ نویسه"
+  expect_persian "پیام دلیل فارسی است"
+  req POST "/tasks/$id/extend" '{"estimate_minutes":80,"reason":"          "}'; expect_code 400 "دلیل فقط فاصله"
+  req POST "/tasks/$id/extend" '{"estimate_minutes":50,"reason":"دلیل کافی و طولانی"}'; expect_code 400 "تمدید به همان مقدار"
+  req POST "/tasks/$id/extend" '{"estimate_minutes":40,"reason":"دلیل کافی و طولانی"}'; expect_code 400 "تمدید به مقدار کمتر (کاهش ممنوع)"
+  req POST "/tasks/$id/extend" '{"estimate_minutes":80,"reason":"دقیقاً ده نویس"}'; expect_code 200 "تمدید با دلیل"
+  expect_jq '[.estimate_minutes,.estimate_original]|join(",")' '80,50' "estimate_original ثابت ماند"
+  req POST "/tasks/$id/extend" '{"estimate_minutes":120,"reason":"تمدید دوم با دلیل کافی"}'; expect_code 200 "تمدید دوم"
+  req GET "/tasks/$id"
+  expect_jq '[.estimate_minutes,.estimate_original,(.extensions|length)]|join(",")' '120,50,2' "دو تمدید در جدول جدا ثبت شد"
+  expect_jq '.extensions|map("\(.old_minutes)>\(.new_minutes)")|join(",")' '50>80,80>120' "ترتیب و مقدارها"
+  expect_jq '.extensions[0].reason' 'دقیقاً ده نویس' "دلیل ذخیره شد"
+  req GET /tasks;  echo "$BODY" | jq -e '[.[]|select(.id=='$id')|has("extensions")]|all(.==false)' >/dev/null && ok "فهرست تسک‌ها دلیل‌ها را نمی‌آورد" || bad "فهرست دلیل‌ها را آورد"
+  req PATCH "/tasks/$id" '{"estimate_minutes":10}'; expect_code 400 "PATCH تخمین را عوض نمی‌کند"
+  # دو تمدید همزمان از همان مقدار: فقط یکی برنده است
+  seq 1 2 | xargs -P 2 -I{} curl -s -o /dev/null -w '%{http_code}\n' -u "$MLT_AUTH" -H 'Content-Type: application/json' -X POST -d '{"estimate_minutes":200,"reason":"تمدید همزمان با دلیل"}' "$MLT_BASE/tasks/$id/extend" > /tmp/mlt_par.$$
+  [ "$(grep -c '^200$' /tmp/mlt_par.$$)" = 1 ] && ok "تمدید همزمان: فقط یک برنده" || bad "تمدید همزمان: $(tr '\n' ' ' < /tmp/mlt_par.$$)"; rm -f /tmp/mlt_par.$$
+  req GET "/tasks/$id"; expect_jq '.estimate_minutes' '200' "مقدار نهایی ۲۰۰"
+  # تسک بدون تخمین تمدید نمی‌شود
+  key="smkext_$$"
+  req POST /import "{\"format\":\"meloraw-tasks-export\",\"version\":1,\"tasks\":[{\"id\":1,\"legacy_id\":\"$key\",\"title\":\"ناقص $key\",\"owner\":\"you\"}]}"
+  req GET "/tasks?incomplete=true"; local inc; inc=$(echo "$BODY" | jq -r --arg k "ناقص $key" '.[]|select(.title==$k)|.id'); CREATED+=("$inc")
+  req POST "/tasks/$inc/extend" '{"estimate_minutes":60,"reason":"دلیل کافی و طولانی"}'; expect_code 400 "تمدید تسک بدون تخمین"
+  req POST /tasks/999999999/extend '{"estimate_minutes":60,"reason":"دلیل کافی و طولانی"}'; expect_code 404 "تمدید تسک ناموجود"
+
+  # روتین موقت (با import ساخته و در پایان پاک می‌شود)
+  today=$(date -u +%F); key="smkr$$"
+  req POST /import "{\"format\":\"meloraw-tasks-export\",\"version\":1,\"tasks\":[{\"id\":1,\"legacy_id\":\"routine_${key}_$today\",\"title\":\"روتین تست\",\"owner\":\"you\",\"kind\":\"routine\",\"recurrence\":\"daily\",\"period_key\":\"$today\",\"meta\":{\"routine_id\":\"$key\"}}]}"
+  expect_jq '.tasks.created' '1' "روتین تست ساخته شد"
+  req GET "/tasks?kind=routine"; local rid; rid=$(echo "$BODY" | jq -r --arg k "routine_${key}_$today" '.[]|select(.legacy_id==$k)|.id'); CREATED+=("$rid")
+  req GET "/routines?period=daily"; expect_jq "[.[]|select(.key==\"$key\")|.incomplete]|join(\",\")" 'true' "روتین بدون تخمین ناقص است"
+  req PATCH "/routines/$key" '{}';                                          expect_code 400 "PATCH خالی روتین"
+  req PATCH "/routines/$key" '{"estimate_minutes":3}';                      expect_code 400 "تخمین روتین کمتر از ۵"
+  req PATCH "/routines/$key" '{"recurrence_until":"nope"}';                 expect_code 400 "پایان روتین نامعتبر"
+  req PATCH "/routines/$key" '{"stopped":true,"recurrence_until":"2031-01-01"}'; expect_code 400 "stopped و recurrence_until با هم"
+  req PATCH "/routines/$key" '{"estimate_minutes":15,"done_criteria":"معیار روتین"}'
+  expect_jq '[.estimate_minutes,.done_criteria,.incomplete,.stopped]|join(",")' '15,معیار روتین,false,false' "قالب روتین ثبت شد"
+  req PATCH "/routines/$key" '{"status":"in_progress"}';                    expect_jq '[.status,.estimate_minutes]|join(",")' 'in_progress,15' "تغییر وضعیت قالب را نگه می‌دارد"
+  req PATCH "/routines/$key" '{"stopped":true}';                            expect_jq '[.stopped,.recurrence_until]|join(",")' "true,$(date -u -d yesterday +%F)" "توقف روتین (پایان = دیروز)"
+  req PATCH "/routines/$key" '{"status":"done"}';                           expect_code 409 "روتین متوقف وضعیت نمی‌گیرد"
+  req PATCH "/routines/$key" '{"stopped":false}';                           expect_jq '[.stopped,(.recurrence_until // "none")]|join(",")' 'false,none' "ادامه‌ی روتین"
+  req PATCH "/routines/$key" '{"recurrence_until":"2031-01-01"}';           expect_jq '[.stopped,.recurrence_until]|join(",")' 'false,2031-01-01' "پایان آینده: هنوز فعال"
+  req PATCH "/routines/$key" '{"status":"done"}';                           expect_jq '.status' 'done' "وضعیت روتین فعال"
+  [ -n "${MLT_AUTH_NOCAP:-}" ] && { req PATCH "/routines/$key" '{"stopped":true}' "$MLT_AUTH_NOCAP"; expect_code 403 "توقف روتین بدون نقش ادمین"; }
+}
+
 # هدرهای امنیتی/کش روی همه‌ی پاسخ‌های REST افزونه (موفق، خطا، بدون توکن)
 expect_hdr() { echo "$HDRS" | grep -qiE "^$1: .*$2" && ok "$3" || bad "$3 (هدر $1 نیست)"; }
 run_headers() {
@@ -384,8 +438,8 @@ run_ratelimit() {
 
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_headers; run_scope; run_export; run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_headers; run_scope; run_export; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

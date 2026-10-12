@@ -24,6 +24,8 @@ class MLT_Log
         'import'          => 'ایمپورت',
         'export'          => 'خروجی JSON',
         'estimate_set'    => 'ثبت زمان تقریبی',
+        'estimate_extend' => 'تمدید زمان تقریبی',
+        'routine_edit'    => 'ویرایش روتین',
         'settings_update' => 'تنظیمات',
         'telegram_notify' => 'ارسال به تلگرام',
         'telegram_error'  => 'خطای تلگرام',

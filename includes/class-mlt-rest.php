@@ -76,6 +76,12 @@ class MLT_REST
             ['POST', 'flag_comment'],
         ]);
 
+        self::route("/tasks/$id/extend", [
+            ['POST', 'extend_task', [
+                'estimate_minutes' => ['type' => 'integer', 'required' => true],
+                'reason'           => ['type' => 'string', 'required' => true],
+            ]],
+        ]);
         self::route("/tasks/$id/notify", [
             ['POST', 'notify_task', ['text' => ['type' => 'string']]],
         ]);
@@ -96,8 +102,12 @@ class MLT_REST
         ]);
         self::route('/routines/(?P<key>[A-Za-z0-9._-]{1,32})', [
             ['PATCH', 'update_routine', [
-                'status'     => ['type' => 'string', 'enum' => self::ENUMS['status'], 'required' => true],
-                'period_key' => ['type' => 'string'],
+                'status'           => ['type' => 'string', 'enum' => self::ENUMS['status']],
+                'period_key'       => ['type' => 'string'],
+                'estimate_minutes' => ['type' => 'integer'],
+                'done_criteria'    => ['type' => ['string', 'null']],
+                'recurrence_until' => ['type' => ['string', 'null']],
+                'stopped'          => ['type' => 'boolean'],
             ]],
         ]);
 
@@ -259,7 +269,7 @@ class MLT_REST
             $params[] = $assignee;
         }
         if ($request->get_param('incomplete')) {
-            $where[] = "estimate_minutes IS NULL AND kind IN ('phase','new','routine')";
+            $where[] = "estimate_minutes IS NULL AND kind IN ('phase','new')"; // routines: GET /routines, incomplete flag
         }
 
         $sql = "SELECT * FROM {$p}mlt_tasks";
@@ -278,7 +288,17 @@ class MLT_REST
         if (!$row) {
             return self::not_found();
         }
-        return self::format_task($row);
+        $task = self::format_task($row);
+        $task['extensions'] = MLT_Estimate::extensions((int) $row['id']);
+        return $task;
+    }
+
+    /** Raises the fixed estimate; a reason is required and the original estimate stays. */
+    public static function extend_task(WP_REST_Request $request)
+    {
+        $id = self::task_id($request);
+        $result = MLT_Estimate::extend($id, $request['estimate_minutes'], $request['reason']);
+        return is_wp_error($result) ? $result : self::format_task(self::find_task($id)) + ['extension' => $result];
     }
 
     public static function create_task(WP_REST_Request $request)
@@ -386,7 +406,7 @@ class MLT_REST
         if (!$task) {
             return self::not_found();
         }
-        foreach (['mlt_comments', 'mlt_task_assignees'] as $table) {
+        foreach (['mlt_comments', 'mlt_task_assignees', 'mlt_estimate_extensions'] as $table) {
             $wpdb->delete($wpdb->prefix . $table, ['task_id' => $id]);
         }
         $wpdb->delete("{$wpdb->prefix}mlt_tasks", ['id' => $id]);
@@ -544,10 +564,27 @@ class MLT_REST
         return rest_ensure_response(MLT_Routines::views($request->get_param('period')));
     }
 
-    /** Sets the state of the routine's current period; period_key, if sent, must still be the current one. */
+    /**
+     * The state of the routine's current period (status; period_key, if sent, must still be the current one) and/or its
+     * template: estimate_minutes, done_criteria, recurrence_until, stopped (true: the routine ends yesterday, false: runs on).
+     */
     public static function update_routine(WP_REST_Request $request)
     {
-        return MLT_Routines::set_status((string) $request['key'], $request['status'], $request->get_param('period_key'));
+        $key = (string) $request['key'];
+        $template = array_intersect_key($request->get_json_params() ?: $request->get_body_params(), array_flip(['estimate_minutes', 'done_criteria', 'recurrence_until', 'stopped']));
+        if (!$request->has_param('status') && !$template) {
+            return self::bad_request('status یا یکی از فیلدهای قالب روتین لازم است.');
+        }
+        if ($template) {
+            $result = MLT_Routines::update_template($key, $template);
+            if (is_wp_error($result)) {
+                return $result;
+            }
+        }
+        if ($request->has_param('status')) {
+            return MLT_Routines::set_status($key, $request['status'], $request->get_param('period_key'));
+        }
+        return MLT_Routines::view_of($key);
     }
 
     // ---- comments ----

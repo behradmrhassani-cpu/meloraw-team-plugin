@@ -72,6 +72,9 @@ class MLT_Routines
             return new WP_Error('mlt_not_found', 'پیدا نشد.', ['status' => 404]);
         }
         $def = $defs[$key];
+        if (self::is_stopped($def)) {
+            return new WP_Error('mlt_routine_stopped', 'این روتین متوقف شده است؛ اول از حالت توقف درش بیاور.', ['status' => 409]);
+        }
         $period = self::period_key($def['frequency']);
         if ($period_key !== null && $period_key !== $period) {
             return new WP_Error('mlt_period_changed', 'دوره‌ی این روتین عوض شده است؛ صفحه را تازه کن.', ['status' => 409]);
@@ -124,6 +127,77 @@ class MLT_Routines
         return self::view($def, $period, $row);
     }
 
+    private static function is_stopped(array $def)
+    {
+        return $def['recurrence_until'] !== null && $def['recurrence_until'] < MLT_Time::today();
+    }
+
+    /** The routine as the API shows it, for the current period. */
+    public static function view_of($key)
+    {
+        $defs = self::definitions();
+        if (!isset($defs[$key])) {
+            return new WP_Error('mlt_not_found', 'پیدا نشد.', ['status' => 404]);
+        }
+        $period = self::period_key($defs[$key]['frequency']);
+        return self::view($defs[$key], $period, self::rows([$period])[$key . '|' . $period] ?? null);
+    }
+
+    /**
+     * Edits the routine's template (it lives on the newest row and is copied into each new period's row):
+     * estimate_minutes, done_criteria, recurrence_until, stopped.
+     */
+    public static function update_template($key, array $f)
+    {
+        global $wpdb;
+        $defs = self::definitions();
+        if (!isset($defs[$key])) {
+            return new WP_Error('mlt_not_found', 'پیدا نشد.', ['status' => 404]);
+        }
+        $def = $defs[$key];
+        $bad = function ($msg) {
+            return new WP_Error('mlt_bad_request', $msg, ['status' => 400]);
+        };
+        $set = [];
+        if (array_key_exists('estimate_minutes', $f)) {
+            $estimate = MLT_Taskmeta::estimate($f['estimate_minutes']);
+            if ($estimate === false) {
+                return $bad(sprintf('زمان تقریبی باید عدد صحیح بین %d و %d دقیقه باشد.', MLT_Taskmeta::ESTIMATE_MIN, MLT_Taskmeta::ESTIMATE_MAX));
+            }
+            $set['estimate_minutes'] = $estimate;
+            $set['estimate_original'] = $def['estimate_original'] ?? $estimate; // the first value stays as the original
+        }
+        if (array_key_exists('done_criteria', $f)) {
+            $criteria = MLT_Taskmeta::criteria($f['done_criteria']);
+            if ($criteria === false) {
+                return $bad('معیار انجام بیش از ' . MLT_Taskmeta::CRITERIA_MAX . ' نویسه است.');
+            }
+            $set['done_criteria'] = $criteria;
+        }
+        if (array_key_exists('recurrence_until', $f) && array_key_exists('stopped', $f)) {
+            return $bad('recurrence_until و stopped را با هم نفرست.');
+        }
+        if (array_key_exists('recurrence_until', $f)) {
+            $until = MLT_Taskmeta::date($f['recurrence_until']);
+            if ($until === false) {
+                return $bad('پایان روتین باید تاریخ میلادی به شکل YYYY-MM-DD باشد.');
+            }
+            $set['recurrence_until'] = $until;
+        }
+        if (array_key_exists('stopped', $f)) {
+            $set['recurrence_until'] = $f['stopped'] ? gmdate('Y-m-d', time() - DAY_IN_SECONDS) : null; // yesterday: it does not run today
+        }
+        if ($set) {
+            $set += ['updated_by' => get_current_user_id(), 'updated_at' => current_time('mysql', true)];
+            if ($wpdb->update($wpdb->prefix . 'mlt_tasks', $set, ['id' => $def['id']]) === false) {
+                return new WP_Error('mlt_db_error', 'ذخیره انجام نشد.', ['status' => 500]);
+            }
+            $names = array_diff(array_keys($set), ['updated_by', 'updated_at', 'estimate_original']);
+            MLT_REST::log_activity((int) $def['id'], 'routine_edit', sprintf('«%s»: %s', $def['title'], implode(', ', $names)));
+        }
+        return true;
+    }
+
     private static function view(array $def, $period, $row)
     {
         return [
@@ -135,6 +209,11 @@ class MLT_Routines
             'period_key'  => $period,
             'status'      => $row ? $row['status'] : 'open',
             'task_id'     => $row ? (int) $row['id'] : null,
+            'estimate_minutes' => $def['estimate_minutes'] === null ? null : (int) $def['estimate_minutes'],
+            'done_criteria'    => $def['done_criteria'],
+            'recurrence_until' => $def['recurrence_until'],
+            'stopped'          => self::is_stopped($def),
+            'incomplete'       => $def['estimate_minutes'] === null,
         ];
     }
 
@@ -153,6 +232,7 @@ class MLT_Routines
             $key = is_array($meta) && isset($meta['routine_id']) && is_string($meta['routine_id']) ? $meta['routine_id'] : '';
             if ($key !== '' && isset(self::FREQS[$r['recurrence']])) {
                 $defs[$key] = [
+                    'id'          => (int) $r['id'],
                     'key'         => $key,
                     'title'       => $r['title'],
                     'description' => $r['description'],
