@@ -22,6 +22,8 @@ class MLT_Admin
         add_action('admin_post_mlt_delete_task', [__CLASS__, 'handle_delete_task']);
         add_action('admin_post_mlt_edit_task', [__CLASS__, 'handle_edit_task']);
         add_action('admin_post_mlt_set_status', [__CLASS__, 'handle_set_status']);
+        add_action('admin_post_mlt_add_comment', [__CLASS__, 'handle_add_comment']);
+        add_action('admin_post_mlt_flag_comment', [__CLASS__, 'handle_flag_comment']);
     }
 
     public static function menu()
@@ -68,6 +70,20 @@ class MLT_Admin
         $notice = get_transient(self::notice_key());
         delete_transient(self::notice_key());
 
+        $open = isset($_GET['comments']) ? absint($_GET['comments']) : 0;
+        $comments = [];
+        if ($rows) {
+            $ids = array_map('intval', wp_list_pluck($rows, 'id'));
+            $found = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}mlt_comments WHERE task_id IN (" . implode(',', array_fill(0, count($ids), '%d')) . ') ORDER BY id ASC',
+                $ids
+            ), ARRAY_A);
+            cache_users(array_unique(array_map('intval', wp_list_pluck($found, 'author'))));
+            foreach ($found as $c) {
+                $comments[(int) $c['task_id']][] = $c;
+            }
+        }
+
         $columns = array_fill_keys(array_keys(self::LABELS['bucket']), []);
         foreach ($rows as $row) {
             if (isset($columns[$row['bucket']])) {
@@ -97,7 +113,7 @@ class MLT_Admin
                             <p class="mlt-empty">تسکی نیست.</p>
                         <?php endif; ?>
                         <?php foreach ($tasks as $t) : ?>
-                            <article class="mlt-card mlt-status--<?php echo esc_attr($t['status']); ?><?php echo (int) $t['id'] === $highlight ? ' mlt-card--new' : ''; ?>">
+                            <article class="mlt-card mlt-status--<?php echo esc_attr($t['status']); ?><?php echo (int) $t['id'] === $highlight ? ' mlt-card--new' : ''; ?><?php echo (int) $t['id'] === $open ? ' mlt-commenting' : ''; ?>">
                                 <h3><?php echo esc_html($t['title']); ?></h3>
                                 <?php if ($t['description'] !== '') : ?>
                                     <p><?php echo esc_html(wp_trim_words($t['description'], 30)); ?></p>
@@ -108,9 +124,15 @@ class MLT_Admin
                                     <span class="mlt-tag mlt-st"><?php echo esc_html(self::label('status', $t['status'])); ?></span>
                                 </div>
                                 <?php if (current_user_can(MLT_CAP)) : ?>
-                                    <?php $tid = (int) $t['id']; $post_url = esc_url(admin_url('admin-post.php')); ?>
+                                    <?php
+                                    $tid = (int) $t['id'];
+                                    $post_url = esc_url(admin_url('admin-post.php'));
+                                    $list = $comments[$tid] ?? [];
+                                    $flagged = count(array_filter($list, function ($c) { return (int) $c['flagged']; }));
+                                    ?>
                                     <div class="mlt-actions">
                                         <button type="button" class="mlt-edit-btn" onclick="this.closest('.mlt-card').classList.toggle('mlt-editing')">ویرایش</button>
+                                        <button type="button" class="mlt-comments-btn<?php echo $flagged ? ' mlt-has-flag' : ''; ?>" onclick="this.closest('.mlt-card').classList.toggle('mlt-commenting')">کامنت‌ها (<?php echo esc_html(number_format_i18n(count($list))); ?>)</button>
                                         <form method="post" action="<?php echo $post_url; ?>" class="mlt-status">
                                             <input type="hidden" name="action" value="mlt_set_status">
                                             <input type="hidden" name="id" value="<?php echo $tid; ?>">
@@ -142,6 +164,41 @@ class MLT_Admin
                                             <button type="button" class="mlt-cancel-btn" onclick="this.closest('.mlt-card').classList.remove('mlt-editing')">انصراف</button>
                                         </div>
                                     </form>
+                                    <div class="mlt-comments">
+                                        <?php foreach ($list as $c) : $author = get_userdata((int) $c['author']); ?>
+                                            <div class="mlt-comment<?php echo (int) $c['flagged'] ? ' mlt-comment--flagged' : ''; ?>">
+                                                <div class="mlt-c-head">
+                                                    <strong><?php echo esc_html($author ? $author->display_name : 'کاربر حذف‌شده'); ?></strong>
+                                                    <?php if ($c['agent'] !== null && $c['agent'] !== '') : ?>
+                                                        <span class="mlt-tag"><?php echo esc_html($c['agent']); ?></span>
+                                                    <?php endif; ?>
+                                                    <time><?php echo esc_html(wp_date('Y/m/d H:i', strtotime($c['created_at'] . ' UTC'))); ?></time>
+                                                    <?php if ((int) $c['flagged']) : ?>
+                                                        <span class="mlt-flagged">پرچم‌دار</span>
+                                                    <?php else : ?>
+                                                        <form method="post" action="<?php echo $post_url; ?>" class="mlt-flag">
+                                                            <input type="hidden" name="action" value="mlt_flag_comment">
+                                                            <input type="hidden" name="id" value="<?php echo $tid; ?>">
+                                                            <input type="hidden" name="cid" value="<?php echo (int) $c['id']; ?>">
+                                                            <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce('mlt_flag_comment_' . (int) $c['id'])); ?>">
+                                                            <button type="submit" class="mlt-flag-btn">پرچم</button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <div class="mlt-c-body"><?php echo self::comment_html($c['body']); ?></div>
+                                            </div>
+                                        <?php endforeach; ?>
+                                        <?php if (!$list) : ?>
+                                            <p class="mlt-empty">هنوز کامنتی نیست.</p>
+                                        <?php endif; ?>
+                                        <form method="post" action="<?php echo $post_url; ?>" class="mlt-comment-form">
+                                            <input type="hidden" name="action" value="mlt_add_comment">
+                                            <input type="hidden" name="id" value="<?php echo $tid; ?>">
+                                            <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce('mlt_add_comment_' . $tid)); ?>">
+                                            <textarea name="body" rows="2" required maxlength="10000" placeholder="کامنت جدید (فقط متن)"></textarea>
+                                            <button type="submit" class="mlt-btn">ثبت کامنت</button>
+                                        </form>
+                                    </div>
                                 <?php endif; ?>
                             </article>
                         <?php endforeach; ?>
@@ -176,91 +233,113 @@ class MLT_Admin
         <?php
     }
 
-    /** Saves through the REST endpoint so validation and sanitizing live in one place. */
+    // Every handler checks capability + nonce, then goes through the REST endpoint so
+    // validation, sanitizing and activity logging live in one place.
+
     public static function handle_add_task()
     {
-        if (!current_user_can(MLT_CAP)) {
-            wp_die('دسترسی ندارید.', '', ['response' => 403]);
-        }
-        check_admin_referer('mlt_add_task');
-
-        $body = [];
-        foreach (['title', 'description', 'owner', 'priority', 'bucket', 'status'] as $field) {
-            if (isset($_POST[$field])) {
-                $body[$field] = (string) wp_unslash($_POST[$field]);
-            }
-        }
-        $request = new WP_REST_Request('POST', '/' . MLT_REST::NS . '/tasks');
-        $request->set_body_params($body);
-        $response = rest_do_request($request);
-        $data = $response->get_data();
-
-        $args = ['page' => self::SLUG];
-        if ($response->is_error()) {
-            $notice = ['type' => 'error', 'msg' => 'ذخیره نشد: ' . ($data['message'] ?? '')];
-        } else {
-            $notice = ['type' => 'ok', 'msg' => 'تسک «' . $data['title'] . '» ساخته شد.'];
-            $args['added'] = $data['id'];
-        }
-        set_transient(self::notice_key(), $notice, MINUTE_IN_SECONDS);
-        wp_safe_redirect(add_query_arg($args, admin_url('admin.php')));
-        exit;
+        self::verify('mlt_add_task');
+        self::call_and_redirect('POST', '/tasks', self::posted(['title', 'description', 'owner', 'priority', 'bucket', 'status']), function ($d) {
+            return ['تسک «' . $d['title'] . '» ساخته شد.', ['added' => $d['id']]];
+        });
     }
 
     public static function handle_delete_task()
     {
-        if (!current_user_can(MLT_CAP)) {
-            wp_die('دسترسی ندارید.', '', ['response' => 403]);
-        }
-        $id = isset($_POST['id']) ? absint($_POST['id']) : 0;
-        check_admin_referer('mlt_delete_task_' . $id);
-
-        $response = rest_do_request(new WP_REST_Request('DELETE', '/' . MLT_REST::NS . '/tasks/' . $id));
-        $data = $response->get_data();
-        $notice = $response->is_error()
-            ? ['type' => 'error', 'msg' => 'حذف نشد: ' . ($data['message'] ?? '')]
-            : ['type' => 'ok', 'msg' => 'تسک حذف شد.'];
-        set_transient(self::notice_key(), $notice, MINUTE_IN_SECONDS);
-        wp_safe_redirect(add_query_arg('page', self::SLUG, admin_url('admin.php')));
-        exit;
+        $id = self::posted_id();
+        self::verify('mlt_delete_task_' . $id);
+        self::call_and_redirect('DELETE', '/tasks/' . $id, [], function () {
+            return ['تسک حذف شد.', []];
+        });
     }
 
     public static function handle_edit_task()
     {
-        self::patch_and_redirect('mlt_edit_task', ['title', 'description', 'owner', 'priority', 'bucket'], 'تسک ویرایش شد.');
+        self::patch('mlt_edit_task', ['title', 'description', 'owner', 'priority', 'bucket'], 'تسک ویرایش شد.');
     }
 
     public static function handle_set_status()
     {
-        self::patch_and_redirect('mlt_set_status', ['status'], 'وضعیت تغییر کرد.');
+        self::patch('mlt_set_status', ['status'], 'وضعیت تغییر کرد.');
     }
 
-    /** Shared by edit and quick-status: both go through PATCH /tasks/{id}, which validates, saves and logs. */
-    private static function patch_and_redirect($action, array $fields, $ok_msg)
+    private static function patch($action, array $fields, $ok_msg)
     {
-        if (!current_user_can(MLT_CAP)) {
-            wp_die('دسترسی ندارید.', '', ['response' => 403]);
-        }
-        $id = isset($_POST['id']) ? absint($_POST['id']) : 0;
-        check_admin_referer($action . '_' . $id);
+        $id = self::posted_id();
+        self::verify($action . '_' . $id);
+        self::call_and_redirect('PATCH', '/tasks/' . $id, self::posted($fields), function () use ($ok_msg, $id) {
+            return [$ok_msg, ['edited' => $id]];
+        });
+    }
 
+    public static function handle_add_comment()
+    {
+        $id = self::posted_id();
+        self::verify('mlt_add_comment_' . $id);
+        self::call_and_redirect('POST', '/tasks/' . $id . '/comments', self::posted(['body']), function () {
+            return ['کامنت ثبت شد.', []];
+        }, ['comments' => $id]);
+    }
+
+    public static function handle_flag_comment()
+    {
+        $id = self::posted_id();
+        $cid = isset($_POST['cid']) ? absint($_POST['cid']) : 0;
+        self::verify('mlt_flag_comment_' . $cid);
+        self::call_and_redirect('POST', '/tasks/' . $id . '/comments/' . $cid . '/flag', [], function () {
+            return ['پرچم زده شد.', []];
+        }, ['comments' => $id]);
+    }
+
+    /** Comment text, escaped first; each URL is then isolated as LTR so its trailing "/" does not jump to the wrong end of an RTL line. */
+    private static function comment_html($text)
+    {
+        return preg_replace('~https?://[^\s<]+~u', '<bdi dir="ltr">$0</bdi>', esc_html($text));
+    }
+
+    private static function posted_id()
+    {
+        return isset($_POST['id']) ? absint($_POST['id']) : 0;
+    }
+
+    private static function posted(array $fields)
+    {
         $body = [];
         foreach ($fields as $field) {
             if (isset($_POST[$field])) {
                 $body[$field] = (string) wp_unslash($_POST[$field]);
             }
         }
-        $request = new WP_REST_Request('PATCH', '/' . MLT_REST::NS . '/tasks/' . $id);
+        return $body;
+    }
+
+    /** Capability + nonce check with Persian failure pages (core's nonce-failure page is English). */
+    private static function verify($action)
+    {
+        if (!current_user_can(MLT_CAP)) {
+            wp_die('دسترسی ندارید.', 'خطا', ['response' => 403]);
+        }
+        $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field(wp_unslash($_POST['_wpnonce'])) : '';
+        if (!wp_verify_nonce($nonce, $action)) {
+            wp_die('اعتبار این صفحه تمام شده است. صفحه را دوباره باز کن و دوباره امتحان کن.', 'خطا', ['response' => 403]);
+        }
+    }
+
+    /** $on_ok($data) returns [success message, extra redirect args]; $always is added to the redirect either way. */
+    private static function call_and_redirect($method, $route, array $body, callable $on_ok, array $always = [])
+    {
+        $request = new WP_REST_Request($method, '/' . MLT_REST::NS . $route);
         $request->set_body_params($body);
         $response = rest_do_request($request);
         $data = $response->get_data();
 
-        $args = ['page' => self::SLUG];
+        $args = ['page' => self::SLUG] + $always;
         if ($response->is_error()) {
-            $notice = ['type' => 'error', 'msg' => 'ذخیره نشد: ' . ($data['message'] ?? '')];
+            $notice = ['type' => 'error', 'msg' => 'انجام نشد: ' . ($data['message'] ?? '')];
         } else {
-            $notice = ['type' => 'ok', 'msg' => $ok_msg];
-            $args['edited'] = $id;
+            list($msg, $extra) = $on_ok($data);
+            $notice = ['type' => 'ok', 'msg' => $msg];
+            $args += $extra;
         }
         set_transient(self::notice_key(), $notice, MINUTE_IN_SECONDS);
         wp_safe_redirect(add_query_arg($args, admin_url('admin.php')));

@@ -58,6 +58,7 @@ class MLT_REST
         ]);
 
         add_filter('rest_request_before_callbacks', [__CLASS__, 'guard'], 10, 3);
+        add_filter('rest_request_after_callbacks', [__CLASS__, 'localize_error'], 10, 3);
         add_filter('rest_post_dispatch', [__CLASS__, 'add_headers'], 10, 3);
     }
 
@@ -109,8 +110,51 @@ class MLT_REST
         if (self::is_ours($request)) {
             $response->header('X-Robots-Tag', 'noindex, nofollow');
             $response->header('Cache-Control', 'no-store, private');
+            if ($response->is_error()) {
+                $data = $response->get_data();
+                if (is_array($data) && strpos((string) ($data['code'] ?? ''), 'mlt_') !== 0) {
+                    $status = $response->get_status();
+                    list($code, $message, $fields) = self::persian_error((string) ($data['code'] ?? ''), $status, $data['data']['params'] ?? []);
+                    $response->set_data(['code' => $code, 'message' => $message, 'data' => ['status' => $status, 'fields' => $fields]]);
+                }
+            }
         }
         return $response;
+    }
+
+    /** WordPress core errors (invalid/missing param, bad JSON...) are English; replace them with Persian ones. */
+    public static function localize_error($response, $handler, $request)
+    {
+        if (!is_wp_error($response) || !self::is_ours($request) || strpos($response->get_error_code(), 'mlt_') === 0) {
+            return $response;
+        }
+        $data = $response->get_error_data();
+        $status = is_array($data) && isset($data['status']) ? (int) $data['status'] : 500;
+        list($code, $message, $fields) = self::persian_error($response->get_error_code(), $status, is_array($data) ? ($data['params'] ?? []) : []);
+        return new WP_Error($code, $message, ['status' => $status, 'fields' => $fields]);
+    }
+
+    private static function persian_error($code, $status, $params)
+    {
+        $params = is_array($params) ? $params : [];
+        if ($code === 'rest_invalid_param') {
+            $fields = array_map('strval', array_keys($params));
+            return ['mlt_invalid_param', 'مقدار این فیلدها نامعتبر است: ' . implode('، ', $fields), $fields];
+        }
+        if ($code === 'rest_missing_callback_param') {
+            $fields = array_map('strval', array_values($params));
+            return ['mlt_missing_param', 'این فیلدهای الزامی ارسال نشده‌اند: ' . implode('، ', $fields), $fields];
+        }
+        if ($code === 'rest_invalid_json') {
+            return ['mlt_invalid_json', 'بدنه‌ی درخواست JSON معتبر نیست.', []];
+        }
+        if ($status === 401 || $status === 403) {
+            return ['mlt_forbidden', 'دسترسی ندارید.', []];
+        }
+        if ($status === 404) {
+            return ['mlt_not_found', 'پیدا نشد.', []];
+        }
+        return $status < 500 ? ['mlt_bad_request', 'درخواست نامعتبر است.', []] : ['mlt_error', 'خطای سرور.', []];
     }
 
     // ---- tasks ----
@@ -166,8 +210,10 @@ class MLT_REST
         if (!$wpdb->insert("{$wpdb->prefix}mlt_tasks", $data)) {
             return self::db_error();
         }
+        $id = $wpdb->insert_id;
+        self::log_activity($id, 'task_create', sprintf('«%s»', $data['title']));
 
-        $response = rest_ensure_response(self::format_task(self::find_task($wpdb->insert_id)));
+        $response = rest_ensure_response(self::format_task(self::find_task($id)));
         $response->set_status(201);
         return $response;
     }
@@ -193,6 +239,15 @@ class MLT_REST
         if ($wpdb->update("{$wpdb->prefix}mlt_tasks", $data, ['id' => $id]) === false) {
             return self::db_error();
         }
+        $changed = [];
+        foreach ($data as $field => $value) {
+            if (!in_array($field, ['status', 'updated_by', 'updated_at'], true) && (string) $value !== (string) $old[$field]) {
+                $changed[] = $field;
+            }
+        }
+        if ($changed) {
+            self::log_activity($id, 'task_edit', sprintf('«%s»: %s', $old['title'], implode(', ', $changed)));
+        }
         if (isset($data['status']) && $data['status'] !== $old['status']) {
             self::log_activity($id, 'status_change', sprintf('«%s»: %s → %s', $old['title'], $old['status'], $data['status']));
         }
@@ -203,11 +258,13 @@ class MLT_REST
     {
         global $wpdb;
         $id = (int) $request['id'];
-        if (!self::find_task($id)) {
+        $task = self::find_task($id);
+        if (!$task) {
             return self::not_found();
         }
         $wpdb->delete("{$wpdb->prefix}mlt_comments", ['task_id' => $id]);
         $wpdb->delete("{$wpdb->prefix}mlt_tasks", ['id' => $id]);
+        self::log_activity($id, 'task_delete', sprintf('«%s»', $task['title']));
         return ['deleted' => true, 'id' => $id];
     }
 
@@ -298,8 +355,10 @@ class MLT_REST
         if (!$ok) {
             return self::db_error();
         }
+        $cid = $wpdb->insert_id;
+        self::log_activity($id, 'comment_add', sprintf('«%s»: کامنت #%d', self::find_task($id)['title'], $cid));
 
-        $response = rest_ensure_response(self::format_comment(self::find_comment($id, $wpdb->insert_id)));
+        $response = rest_ensure_response(self::format_comment(self::find_comment($id, $cid)));
         $response->set_status(201);
         return $response;
     }
@@ -309,11 +368,15 @@ class MLT_REST
         global $wpdb;
         $id  = (int) $request['id'];
         $cid = (int) $request['cid'];
-        if (!self::find_comment($id, $cid)) {
+        $comment = self::find_comment($id, $cid);
+        if (!$comment) {
             return self::not_found();
         }
         if ($wpdb->update("{$wpdb->prefix}mlt_comments", ['flagged' => 1], ['id' => $cid]) === false) {
             return self::db_error();
+        }
+        if (!(int) $comment['flagged']) {
+            self::log_activity($id, 'comment_flag', sprintf('«%s»: کامنت #%d', self::find_task($id)['title'], $cid));
         }
         return self::format_comment(self::find_comment($id, $cid));
     }

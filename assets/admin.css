@@ -88,3 +88,21 @@
 .mlt-edit-form { display: none; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .mlt-editing .mlt-edit-form { display: grid; }
 @media (max-width: 520px) { .mlt-edit-form { grid-template-columns: 1fr 1fr; } }
+
+/* کامنت‌ها و پرچم */
+.mlt-comments-btn, .mlt-flag-btn { background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 2px 10px; font-family: inherit; font-size: 12px; cursor: pointer; }
+.mlt-comments-btn:hover, .mlt-flag-btn:hover, .mlt-commenting .mlt-comments-btn { border-color: var(--gold); color: var(--gold); }
+.mlt-comments-btn.mlt-has-flag { border-color: var(--gold); }
+.mlt-comments { display: none; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.mlt-commenting .mlt-comments { display: block; }
+.mlt-comment { background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.mlt-comment--flagged { border-color: var(--gold); }
+.mlt-c-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+.mlt-c-head strong { color: var(--ink); }
+.mlt-c-head .mlt-flag, .mlt-c-head .mlt-flagged { margin-inline-start: auto; }
+.mlt-flag { margin: 0; }
+.mlt-flagged { color: var(--gold); border: 1px solid var(--gold); border-radius: 999px; padding: 0 8px; }
+.mlt-c-body { margin-top: 6px; font-size: 13px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mlt-comment-form { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 8px 0 0; }
+.mlt .mlt-comment-form textarea { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 13px; box-shadow: none; }
+.mlt .mlt-comment-form textarea:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }

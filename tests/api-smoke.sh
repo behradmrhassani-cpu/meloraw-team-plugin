@@ -29,6 +29,8 @@ req() {
 }
 
 expect_code() { [ "$CODE" = "$1" ] && ok "$2 → $CODE" || bad "$2 → $CODE (انتظار $1): $BODY"; }
+# پیام خطا باید فارسی باشد و متن انگلیسی وردپرس در آن نباشد
+expect_persian() { echo "$BODY" | jq -e '.message | test("[آ-ی]") and (test("Invalid|parameter|No route|Missing|Sorry") | not)' >/dev/null && ok "$1" || bad "$1: $(echo "$BODY" | jq -c '.message')"; }
 expect_jq()   { [ "$(echo "$BODY" | jq -r "$1")" = "$2" ] && ok "$3" || bad "$3: $(echo "$BODY" | jq -c "$1")"; }
 
 # new_task JSON → sets NEW_ID (no subshell, so CREATED is kept for cleanup)
@@ -85,6 +87,12 @@ run_tasks() {
   req POST /tasks '{"description":"بی‌عنوان"}';      expect_code 400 "ساخت بدون عنوان"
   req POST /tasks '{"title":"   "}';                 expect_code 400 "عنوان خالی"
   req POST /tasks '{"title":"x","owner":"hacker"}';   expect_code 400 "مسئول نامعتبر"
+  expect_jq '.code + "|" + (.data.fields | join(","))' 'mlt_invalid_param|owner' "کد و نام فیلد خطا"
+  expect_persian "پیام خطای مسئول نامعتبر فارسی است"
+  req POST /tasks '{bad json';                       expect_code 400 "JSON خراب"
+  expect_persian "پیام JSON خراب فارسی است"
+  req GET /no-such-route;                            expect_code 404 "مسیر ناموجود"
+  expect_persian "پیام مسیر ناموجود فارسی است"
   req POST /tasks '{"title":"x","kind":"routine"}';   expect_code 400 "ساخت روتین از این مسیر ممنوع"
   req PATCH "/tasks/$id" '{}';                       expect_code 400 "ویرایش بدون فیلد"
   req GET /tasks/999999999;                          expect_code 404 "تسک ناموجود"
@@ -109,6 +117,10 @@ run_comments() {
   expect_jq "[.[] | select(.id == $cid)] | length" '1' "کامنت در لیست هست"
 
   req POST "/tasks/$id/comments" '{"body":"  "}';   expect_code 400 "کامنت خالی"
+  expect_persian "پیام کامنت خالی فارسی است"
+  req POST "/tasks/$id/comments" '{}';              expect_code 400 "کامنت بدون فیلد body"
+  expect_jq '.code' 'mlt_missing_param' "کد خطای فیلد الزامی"
+  expect_persian "پیام فیلد الزامی فارسی است"
   req POST /tasks/999999999/comments '{"body":"x"}'; expect_code 404 "کامنت روی تسک ناموجود"
   req GET /tasks/999999999/comments;                expect_code 404 "خواندن کامنت تسک ناموجود"
 }
