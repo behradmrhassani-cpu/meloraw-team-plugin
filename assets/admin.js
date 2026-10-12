@@ -85,3 +85,59 @@
     el.textContent = two(Math.floor(s / 3600)) + ':' + two(Math.floor(s % 3600 / 60)) + ':' + two(s % 60);
   }, 1000);
 })();
+
+/* Copy buttons: a task code ([data-copy]) or the text of a field ([data-copy-from]). */
+(function () {
+  function copy(text, button) {
+    function done() {
+      var old = button.dataset.label || button.textContent;
+      button.dataset.label = old;
+      button.textContent = 'کپی شد ✓';
+      setTimeout(function () { button.textContent = old; }, 1200);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(text); done(); });
+    } else {
+      fallback(text); done();
+    }
+  }
+  function fallback(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) { /* the text stays selectable by hand */ }
+    document.body.removeChild(ta);
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-copy], [data-copy-from]') : null;
+    if (!b) return;
+    if (b.dataset.copy) {
+      copy(b.dataset.copy, b);
+    } else {
+      var src = document.querySelector(b.dataset.copyFrom);
+      if (src) copy(src.value, b);
+    }
+  });
+})();
+
+/* Status select on a card: asks before "done" when the task has a done criterion, offers to give a reason when it is late,
+   then submits (unless the Telegram box is ticked: then "save and send" does it). */
+(function () {
+  document.addEventListener('change', function (e) {
+    var sel = e.target;
+    if (!sel.classList || !sel.classList.contains('mlt-status-select')) return;
+    var form = sel.form, card = sel.closest('.mlt-card');
+    if (sel.value === 'done' && card) {
+      var crit = card.dataset.criteria;
+      if (crit && !window.confirm('معیار انجام:\n\n' + crit + '\n\nبرقرار است؟')) {
+        sel.value = sel.dataset.current;
+        return;
+      }
+      if (card.dataset.late === '1' && form.elements.late_reason) {
+        var why = window.prompt('این تسک از سررسید گذشته. اگر دلیلی داری بنویس (اختیاری):');
+        form.elements.late_reason.value = why ? why.trim() : '';
+      }
+    }
+    if (!form.elements.notify.checked) form.submit();
+  });
+})();

@@ -4,7 +4,7 @@
 #   MLT_SITE=https://example.com \
 #   MLT_LOGIN1='user:password' MLT_LOGIN2='user2:password'   # دو ادمین (رمز ورود، نه Application Password)
 #   MLT_LOGIN_NOCAP='editor:password'                       # اختیاری
-#   tests/ui-check.sh [clock|banner|settings|all]
+#   tests/ui-check.sh [clock|banner|settings|board|routines|all]
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند. فرم‌ها با همان nonce خودشان ارسال می‌شوند.
 
@@ -121,9 +121,149 @@ run_settings() {
   curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -d "action=mlt_save_settings&announcement_text=x" "$MLT_SITE/wp-admin/admin-post.php" | grep -q 403 && ok "ذخیره بدون nonce: ۴۰۳" || bad "ذخیره بدون nonce"
 }
 
+# برد: نمای «من» / «همه» سمت سرور، کد و کپی، تحویل به ایجنت، ویرایش، تمدید، تایمر از روی کارت.
+#   MLT_API=https://example.com/wp-json/meloraw-tasks/v1  MLT_AUTH='user:app-pass'  MLT_AUTH2='user2:app-pass'
+#   (Application Passwordِ همان دو حسابی که MLT_LOGIN1/2 هستند؛ حساب اول به «you» و دوم به «maral» وصل باشد)
+#   MLT_LOGIN3_UNMAPPED='user:password'  اختیاری: ادمینی که به هیچ هویتی وصل نیست
+api() { local auth=$1 path=$2; shift 2; curl -s -u "$auth" -H 'Content-Type: application/json' "$@" "$MLT_API$path"; }
+card()  { python3 "$HERE/ui-card.py" card "$2" <<<"$1"; }
+ids_of() { python3 "$HERE/ui-card.py" ids <<<"$1" | sort -n | tr '\n' ' '; }
+run_board() {
+  echo "== برد: نمای من/همه، کد، تحویل به ایجنت، ویرایش، تمدید، تایمر"
+  : "${MLT_API:?MLT_API را تنظیم کنید}" "${MLT_AUTH:?MLT_AUTH}" "${MLT_AUTH2:?MLT_AUTH2}"
+  local past; past=$(date -u -d '3 days ago' +%F)
+  local t1 t2 t3 c1 c2 c3 j
+  j=$(api "$MLT_AUTH" /tasks -X POST -d '{"title":"برد-الف","owner":"you","estimate_minutes":30,"priority":"high"}'); t1=$(jq -r .id <<<"$j"); c1=$(jq -r .code <<<"$j")
+  j=$(api "$MLT_AUTH" /tasks -X POST -d '{"title":"برد-ب","owner":"maral","assignees":["you","chakra"],"estimate_minutes":45,"done_criteria":"معیار ب"}'); t2=$(jq -r .id <<<"$j"); c2=$(jq -r .code <<<"$j")
+  j=$(api "$MLT_AUTH" /tasks -X POST -d '{"title":"برد-ج","owner":"maral","estimate_minutes":20,"due_date":"'$past'"}'); t3=$(jq -r .id <<<"$j"); c3=$(jq -r .code <<<"$j")
+  [ -n "$t1" ] && [ "$t1" != null ] && ok "سه تسک آزمون ساخته شد ($c1 $c2 $c3)" || { bad "ساخت تسک آزمون"; return; }
+  local mine1 mine2 all alln h
+  mine1=$(page "$JAR1" meloraw-tasks); mine2=$(page "$JAR2" meloraw-tasks)
+  all=$(page "$JAR1" meloraw-tasks '&view=all')
+  [ "$(ids_of "$mine1")" = "$(api "$MLT_AUTH" '/tasks?mine=true' | jq -r '[.[]|select(.kind=="phase" or .kind=="new")|select(.status!="done" or true)|.id]|sort|join(" ")') " ] && ok "نمای من (محمد) = GET /tasks?mine=true" || bad "نمای من با API نمی‌خواند"
+  [ "$(ids_of "$mine2")" = "$(api "$MLT_AUTH2" '/tasks?mine=true' | jq -r '[.[]|select(.kind=="phase" or .kind=="new")|.id]|sort|join(" ")') " ] && ok "نمای من (مارال) = GET /tasks?mine=true" || bad "نمای من (مارال) با API نمی‌خواند"
+  grep -q "id=\"mlt-t-$t1\"" <<<"$mine1" && ! grep -q "id=\"mlt-t-$t3\"" <<<"$mine1" && ok "تسک مارال در برد پیش‌فرض محمد نیست" || bad "فیلتر نمای من"
+  grep -q "id=\"mlt-t-$t2\"" <<<"$mine1" && grep -q "id=\"mlt-t-$t2\"" <<<"$mine2" && ok "تسک چندمسئوله در نمای هر دو مسئول" || bad "چند مسئول در نمای من"
+  [ "$(grep -c "id=\"mlt-t-$t2\"" <<<"$all")" = 1 ] && ok "در نمای «همه» فقط یک کارت (تکراری نیست)" || bad "کارت تکراری"
+  for id in $t1 $t2 $t3; do grep -q "id=\"mlt-t-$id\"" <<<"$all" || bad "در نمای همه نیست: $id"; done; ok "نمای «همه» هر سه را دارد"
+  alln=$(page "$JAR1" meloraw-tasks '&view=all&assignee=maral')
+  grep -q "id=\"mlt-t-$t3\"" <<<"$alln" && ! grep -q "id=\"mlt-t-$t1\"" <<<"$alln" && ok "فیلتر مسئول سمت سرور" || bad "فیلتر مسئول"
+  grep -q 'class="mlt-seg"' <<<"$mine1" && ok "کلید «تسک‌های من / همه» هست" || bad "کلید نمای من/همه نیست"
+  [ -n "${MLT_LOGIN3_UNMAPPED:-}" ] && {
+    login "$JAR3" "$MLT_LOGIN3_UNMAPPED"; h=$(page "$JAR3" meloraw-tasks)
+    grep -q 'هنوز به هیچ‌یک از اعضای تیم وصل نشده' <<<"$h" && grep -q "id=\"mlt-t-$t3\"" <<<"$h" && ok "حساب نگاشت‌نشده: پیام ساده و برد «همه»" || bad "حساب نگاشت‌نشده"
+    grep -q 'class="mlt-seg"' <<<"$h" && bad "کلید من/همه برای نگاشت‌نشده نباید باشد" || true
+  }
+
+  # کارت: کد با دکمه‌ی کپی، برچسب دیر شده / ناقص، مسئول‌ها
+  h=$(card "$all" "$t3")
+  grep -q "data-copy=\"$c3\"" <<<"$h" && ok "دکمه‌ی کپی کد ($c3)" || bad "دکمه‌ی کپی نیست"
+  grep -q 'mlt-badge--late' <<<"$h" && ok "برچسب «دیر شده» برای سررسید گذشته" || bad "برچسب دیر شده نیست"
+  grep -q 'mlt-badge--late' <<<"$(card "$all" "$t1")" && bad "تسک بدون سررسید دیر شده نشان داده شد" || ok "تسک بدون سررسید دیر شده نیست"
+  api "$MLT_AUTH" /import -X POST -d '{"format":"meloraw-tasks-export","version":1,"tasks":[{"id":1,"legacy_id":"uiinc_'$$'","title":"ناقص-ui","owner":"you"}]}' >/dev/null
+  local inc; inc=$(api "$MLT_AUTH" '/tasks?incomplete=true' | jq -r '.[]|select(.title=="ناقص-ui")|.id')
+  grep -q 'mlt-badge--incomplete' <<<"$(card "$(page "$JAR1" meloraw-tasks '&view=all')" "$inc")" && ok "برچسب «ناقص» روی تسک بدون تخمین" || bad "برچسب ناقص نیست"
+  page "$JAR1" meloraw-tasks '&view=all&incomplete=1' | python3 "$HERE/ui-card.py" ids | grep -qx "$inc" && ok "فیلتر «فقط ناقص» آن را نشان می‌دهد" || bad "فیلتر ناقص"
+  page "$JAR1" meloraw-tasks '&view=all&incomplete=1' | python3 "$HERE/ui-card.py" ids | grep -qx "$t1" && bad "فیلتر ناقص تسک کامل را هم آورد" || ok "و تسک کامل را نه"
+
+  # تحویل به ایجنت: همه‌ی بخش‌ها هست و هیچ رمزی نیست
+  local ho; ho=$(python3 "$HERE/ui-card.py" handoff "$t2" <<<"$all")
+  for needle in "$c2" "برد-ب" "معیار ب" "meloraw-tasks/v1" "/tasks/$c2/timer/start" "/tasks/$c2/comments" "/tasks/$c2/timer/finish" '"status": "done"' "حداقل ۱۰" "تلگرام" "45 دقیقه" "محمد"; do
+    grep -qF -- "$needle" <<<"$ho" && : || bad "متن تحویل: «$needle» نیست"
+  done; ok "متن تحویل کامل است (کد، عنوان، معیار، مسئول‌ها، تخمین، آدرس API، مراحل)"
+  grep -qiE 'Basic [A-Za-z0-9+/=]{12,}|[A-Za-z0-9]{4} [A-Za-z0-9]{4} [A-Za-z0-9]{4} [A-Za-z0-9]{4} [A-Za-z0-9]{4} [A-Za-z0-9]{4}|password *[:=] *[^ ]{4,}|token *[:=]' <<<"$ho" && bad "در متن تحویل چیزی شبیه رمز یا توکن است" || ok "هیچ رمز، توکن یا Application Password در متن نیست"
+  [[ "${MLT_AUTH#*:}" != "" ]] && grep -qF -- "${MLT_AUTH#*:}" <<<"$all" && bad "رمز واقعی در HTML برد است" || ok "رمز آزمون در HTML برد نیست"
+
+  # ویرایش از فرم کارت (مسئول‌ها، سررسید، معیار)
+  local body code
+  body=$(python3 "$HERE/ui-form.py" action=mlt_edit_task "id=$t1" "+title=برد-الف" "+owner=you" "+priority=high" "+bucket=normal" "+assignees[]=you" "+assignees[]=chakra" "+due_date=2031-05-06" "+done_criteria=معیار از فرم" <<<"$all")
+  code=$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -d "$body" "$MLT_SITE/wp-admin/admin-post.php"); [ "$code" = 302 ] && ok "ذخیره‌ی فرم ویرایش" || bad "ویرایش: $code"
+  api "$MLT_AUTH" "/tasks/$t1" | jq -e '(.assignees|join(","))=="you,chakra" and .due_date=="2031-05-06" and .done_criteria=="معیار از فرم"' >/dev/null && ok "مسئول‌ها، سررسید و معیار انجام ذخیره شد" || bad "ویرایش اعمال نشد"
+  body=$(python3 "$HERE/ui-form.py" action=mlt_edit_task "id=$t1" "+title=برد-الف" "+owner=you" "+priority=high" "+bucket=normal" "+due_date=" "+done_criteria=" "+assignees_marker=1" <<<"$all")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  api "$MLT_AUTH" "/tasks/$t1" | jq -e '(.assignees|join(","))=="you" and .due_date==null and .done_criteria==null' >/dev/null && ok "برداشتن همه‌ی تیک‌ها: فقط مسئول اصلی می‌ماند؛ سررسید و معیار پاک شد" || bad "پاک‌کردن اعمال نشد"
+
+  # تمدید از فرم کارت
+  local ext_nonce; all=$(page "$JAR1" meloraw-tasks '&view=all')
+  body=$(python3 "$HERE/ui-form.py" action=mlt_extend "id=$t1" "+estimate_minutes=60" "+reason=کوتاه" <<<"$all")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  [ "$(api "$MLT_AUTH" "/tasks/$t1" | jq .estimate_minutes)" = 30 ] && ok "تمدید با دلیل کوتاه رد شد" || bad "تمدید با دلیل کوتاه پذیرفته شد"
+  body=$(python3 "$HERE/ui-form.py" action=mlt_extend "id=$t1" "+estimate_minutes=60" "+reason=دلیل کافی برای تمدید" <<<"$all")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  api "$MLT_AUTH" "/tasks/$t1" | jq -e '.estimate_minutes==60 and .estimate_original==30 and (.extensions|length)==1' >/dev/null && ok "تمدید با دلیل: ۶۰ فعلی، ۳۰ اولیه" || bad "تمدید اعمال نشد"
+  grep -q 'estimate_minutes' <<<"$(card "$(page "$JAR1" meloraw-tasks '&view=all')" "$t1")" && ok "فرم تمدید روی کارت است" || bad "فرم تمدید نیست"
+  grep -q 'دلیل کافی برای تمدید' <<<"$(card "$(page "$JAR1" meloraw-tasks '&view=all')" "$t1")" && ok "تاریخچه‌ی تمدید با دلیل روی کارت دیده می‌شود" || bad "تاریخچه‌ی تمدید"
+  # ساخت از فرم: بدون زمان تقریبی پذیرفته نمی‌شود
+  body=$(python3 "$HERE/ui-form.py" action=mlt_add_task "+title=بدون-تخمین" "+owner=you" "+priority=med" "+bucket=normal" "+status=open" <<<"$all")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  [ "$(api "$MLT_AUTH" '/tasks' | jq '[.[]|select(.title=="بدون-تخمین")]|length')" = 0 ] && ok "فرم ساخت بدون زمان تقریبی تسک نمی‌سازد" || bad "تسک بدون تخمین ساخته شد"
+
+  # تایمر از روی کارت
+  all=$(page "$JAR1" meloraw-tasks '&view=all')
+  body=$(python3 "$HERE/ui-form.py" action=mlt_timer do=start "id=$t1" <<<"$all")
+  code=$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -d "$body" "$MLT_SITE/wp-admin/admin-post.php"); [ "$code" = 302 ] && ok "شروع تایمر از کارت" || bad "شروع: $code"
+  h=$(page "$JAR1" meloraw-tasks '&view=all')
+  grep -q 'mlt-timerbar mlt-timerbar--running' <<<"$h" && grep -A3 'mlt-timer-state' <<<"$h" | grep -q "$c1" && ok "نوار تایمر با کد تسک دیده می‌شود" || bad "نوار تایمر نیست"
+  grep -q 'disabled title="اول تایمر فعالت را تمام کن"' <<<"$h" && ok "شروع روی تسک‌های دیگر غیرفعال است" || bad "دکمه‌ی شروع دیگر غیرفعال نیست"
+  grep -q 'title="می‌پرسیم تا ببینیم وقت کجا می‌رود' <<<"$h" && ok "tooltip «چرا می‌پرسیم» کنار دلیل پاز" || bad "tooltip نیست"
+  for r in rest food offhours waiting interrupted other_task; do grep -q "<option value=\"$r\"" <<<"$h" || bad "دلیل پاز $r نیست"; done; ok "شش دلیل پاز در انتخاب هست"
+  grep -q 'mlt-timerbar' <<<"$(page "$JAR2" meloraw-tasks)" && bad "تایمر محمد در صفحه‌ی مارال دیده شد" || ok "تایمر کاربر دیگر در صفحه‌ی مارال نیست"
+  body=$(python3 "$HERE/ui-form.py" action=mlt_timer do=pause "id=$t1" "+reason=" <<<"$h")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  [ "$(api "$MLT_AUTH" /timer | jq -r .state)" = running ] && ok "پاز بدون دلیل ثبت نمی‌شود" || bad "پاز بدون دلیل ثبت شد"
+  body=$(python3 "$HERE/ui-form.py" action=mlt_timer do=pause "id=$t1" "+reason=food" <<<"$h")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  [ "$(api "$MLT_AUTH" /timer | jq -r .state)" = paused ] && ok "پاز با دلیل غذا" || bad "پاز ثبت نشد"
+  h=$(page "$JAR1" meloraw-tasks '&view=all'); body=$(python3 "$HERE/ui-form.py" action=mlt_timer do=resume "id=$t1" <<<"$h")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  [ "$(api "$MLT_AUTH" /timer | jq -r .state)" = running ] && ok "ادامه" || bad "ادامه ثبت نشد"
+  body=$(python3 "$HERE/ui-form.py" action=mlt_timer do=finish "id=$t1" <<<"$h")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  [ "$(api "$MLT_AUTH" /timer | jq -r .active)" = false ] && ok "پایان" || bad "پایان ثبت نشد"
+  # done از روی فرم وضعیت: معیار نشان داده می‌شود و امتیاز می‌گیرد
+  all=$(page "$JAR1" meloraw-tasks '&view=all'); body=$(python3 "$HERE/ui-form.py" action=mlt_set_status "id=$t1" "+status=done" <<<"$all")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  h=$(card "$(page "$JAR1" meloraw-tasks '&view=all&status=done')" "$t1")
+  grep -q 'mlt-badge--score' <<<"$h" && ok "تسک done با تایمر: برچسب امتیاز" || bad "برچسب امتیاز نیست"
+  # بدون تایمر
+  all=$(page "$JAR1" meloraw-tasks '&view=all'); body=$(python3 "$HERE/ui-form.py" action=mlt_set_status "id=$t2" "+status=done" <<<"$all")
+  curl -s -b "$JAR2" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  h=$(card "$(page "$JAR1" meloraw-tasks '&view=all&status=done')" "$t2")
+  grep -q 'mlt-badge--notimer' <<<"$h" && grep -q 'معیار انجام:' <<<"$h" && ok "done بدون تایمر: «بدون زمان‌سنج» و معیار انجام نشان داده می‌شود" || bad "برچسب بدون زمان‌سنج/معیار"
+  for id in $t1 $t2 $t3 $inc; do api "$MLT_AUTH" "/tasks/$id" -X DELETE >/dev/null; done
+}
+
+# روتین‌ها: قالب، متوقف کردن، ادامه، ناقص
+run_routines() {
+  echo "== صفحه‌ی روتین‌ها"
+  : "${MLT_API:?MLT_API}" "${MLT_AUTH:?MLT_AUTH}"
+  local today key h body rid
+  today=$(date -u +%F); key="uir$$"
+  api "$MLT_AUTH" /import -X POST -d '{"format":"meloraw-tasks-export","version":1,"tasks":[{"id":1,"legacy_id":"routine_'$key'_'$today'","title":"روتین-ui","owner":"you","kind":"routine","recurrence":"daily","period_key":"'$today'","meta":{"routine_id":"'$key'"}}]}' >/dev/null
+  rid=$(api "$MLT_AUTH" '/tasks?kind=routine' | jq -r --arg k "routine_${key}_$today" '.[]|select(.legacy_id==$k)|.id')
+  h=$(page "$JAR1" meloraw-tasks-routines)
+  grep -A6 "id=\"mlt-r-$key\"" <<<"$h" | grep -q 'mlt-badge--incomplete' && ok "روتین بدون تخمین: برچسب ناقص" || bad "برچسب ناقص نیست"
+  has "$(page "$JAR1" meloraw-tasks-routines '&incomplete=1')" "mlt-r-$key" && ok "فیلتر «فقط ناقص»" || bad "فیلتر ناقص"
+  body=$(python3 "$HERE/ui-form.py" action=mlt_routine_template "key=$key" do=save "+estimate_minutes=15" "+done_criteria=معیار روتین از فرم" "+recurrence_until=" <<<"$h")
+  [ "$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -d "$body" "$MLT_SITE/wp-admin/admin-post.php")" = 302 ] && ok "ذخیره‌ی قالب" || bad "ذخیره‌ی قالب"
+  api "$MLT_AUTH" /routines | jq -e --arg k "$key" '.[]|select(.key==$k)|.estimate_minutes==15 and .done_criteria=="معیار روتین از فرم" and .incomplete==false' >/dev/null && ok "قالب ذخیره شد و ناقص نیست" || bad "قالب اعمال نشد"
+  h=$(page "$JAR1" meloraw-tasks-routines)
+  body=$(python3 "$HERE/ui-form.py" action=mlt_routine_template "key=$key" do=stop <<<"$h")
+  [ "$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -d "$body" "$MLT_SITE/wp-admin/admin-post.php")" = 302 ] && ok "متوقف کردن" || bad "متوقف کردن"
+  h=$(page "$JAR1" meloraw-tasks-routines)
+  api "$MLT_AUTH" /routines | jq -e --arg k "$key" '.[]|select(.key==$k)|.stopped==true' >/dev/null && ok "روتین متوقف شد" || bad "توقف اعمال نشد"
+  grep -q 'متوقف‌شده' <<<"$h" && ok "در بخش «متوقف‌شده»" || bad "بخش متوقف‌شده نیست"
+  python3 "$HERE/ui-form.py" action=mlt_routine_status "key=$key" <<<"$h" >/dev/null 2>&1 && bad "روتین متوقف هنوز فرم وضعیت دارد" || ok "روتین متوقف فرم تغییر وضعیت ندارد"
+  body=$(python3 "$HERE/ui-form.py" action=mlt_routine_template "key=$key" do=resume <<<"$h")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  api "$MLT_AUTH" /routines | jq -e --arg k "$key" '.[]|select(.key==$k)|.stopped==false' >/dev/null && ok "ادامه‌ی روتین" || bad "ادامه اعمال نشد"
+  [ -n "$rid" ] && api "$MLT_AUTH" "/tasks/$rid" -X DELETE >/dev/null
+}
+
 case "$SECTION" in
-  clock) run_clock ;; banner) run_banner ;; settings) run_settings ;;
-  all) run_clock; run_banner; run_settings ;;
+  clock) run_clock ;; banner) run_banner ;; settings) run_settings ;; board) run_board ;; routines) run_routines ;;
+  all) run_clock; run_banner; run_settings; run_board; run_routines ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 [ $FAIL = 0 ] && echo "همه‌ی بررسی‌ها گذشت." || echo "بررسی ناموفق داشت."
