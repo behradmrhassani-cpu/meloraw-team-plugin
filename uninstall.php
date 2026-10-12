@@ -22,7 +22,7 @@ if (empty($settings['delete_on_uninstall'])) {
 }
 
 global $wpdb;
-foreach (['mlt_tasks', 'mlt_comments', 'mlt_activity_log'] as $table) {
+foreach (['mlt_tasks', 'mlt_comments', 'mlt_activity_log', 'mlt_task_assignees', 'mlt_counters', 'mlt_estimate_extensions', 'mlt_time_entries', 'mlt_scores'] as $table) {
     $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}{$table}");
 }
 delete_option('mlt_settings');
@@ -32,6 +32,13 @@ $wpdb->query($wpdb->prepare(
     "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
     $wpdb->esc_like('mlt_rl_') . '%',
     $wpdb->esc_like('mlt_rg_') . '%'
+));
+// per-user choices (closed note, silenced timer question, speed label switch)
+$wpdb->query($wpdb->prepare(
+    "DELETE FROM {$wpdb->usermeta} WHERE meta_key IN (%s, %s, %s)",
+    'mlt_why_hidden',
+    'mlt_timer_ack',
+    'mlt_hide_speed'
 ));
 foreach (wp_roles()->role_objects as $role) {
     $role->remove_cap('manage_meloraw_tasks');
