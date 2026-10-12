@@ -29,5 +29,6 @@ define('MLT_TELEGRAM_THREAD_ID', 'thread id');
 - `POST /import` فیلدهای `*_login`، `agent` و `created_at`/`updated_at` فایل را نادیده می‌گیرد: همه‌ی ردیف‌ها به نام کاربرِ واردکننده و با زمان همان لحظه ثبت می‌شوند. namespace افزونه در `/wp-json/` عمومی دیده نمی‌شود.
 
 ## توسعه
+- ظاهر کنترل‌ها: `python3 tests/css-check.py` (کنتراست همه‌ی حالت‌ها)، و با playwright: `node tests/css-states.js` روی صفحه‌ی نمونه‌ی `tests/style-sample.html` (قاعده‌های `:hover` و `:focus` خود وردپرس در آن شبیه‌سازی شده).
 - این ریپو عمومیه. هیچ اطلاعات حساس یا رمز داخل commit نذار.
 - قبل از push، `git grep` روی رمزها و توکن‌ها اجرا کن.

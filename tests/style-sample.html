@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>نمونه‌ی استایل: همه‌ی کنترل‌ها در حالت‌های normal / hover / focus / active / disabled</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- قاعده‌های خود ادمین وردپرس که روی کنترل‌های ما اثر می‌گذارند (از forms.css و common.css، به‌صورت ساده‌شده)،
+     قبل از CSS افزونه، مثل ترتیب واقعی. اگر افزونه این‌ها را override نکند، متن در هاور/فوکوس تیره و ناخوانا می‌شود. -->
+<style id="wp-admin-sim">
+  body { background: #f0f0f1; color: #3c434a; font: 13px/1.4 sans-serif; margin: 0; }
+  a { color: #2271b1; } a:hover, a:active { color: #135e96; } a:focus { color: #043959; box-shadow: 0 0 0 1px #4f94d4; }
+  input[type=text], input[type=number], input[type=date], textarea, select { border: 1px solid #8c8f94; background: #fff; color: #2c3338; border-radius: 4px; min-height: 30px; }
+  input[type=text]:focus, input[type=number]:focus, input[type=date]:focus, textarea:focus { border-color: #2271b1; color: #043959; box-shadow: 0 0 0 1px #2271b1; }
+  select:hover { color: #0a4b78; } select:focus { border-color: #2271b1; color: #0a4b78; box-shadow: 0 0 0 1px #2271b1; } select:active { border-color: #8c8f94; }
+  select:disabled { color: #a7aaad; border-color: #dcdcde; background: rgba(255,255,255,.5); }
+  button:hover { color: #0a4b78; } button:focus { color: #0a4b78; box-shadow: 0 0 0 1px #2271b1; } button:active { background: #dcdcde; }
+</style>
+<link rel="stylesheet" href="../assets/admin.css">
+<!-- بدترین حالت: قاعده‌هایی با specificity بالاتر که «بعد» از CSS افزونه می‌آیند -->
+<style id="wp-admin-sim-late">
+  .wp-admin.wp-core-ui select:hover, .wp-admin.wp-core-ui select:focus { color: #0a4b78; }
+  .wp-admin.wp-core-ui button:hover, .wp-admin.wp-core-ui button:focus { color: #0a4b78; }
+  .wp-admin.wp-core-ui a:hover, .wp-admin.wp-core-ui a:focus { color: #0a4b78; }
+</style>
+<style>.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 14px 0; } .lbl { color: var(--dim); font-size: 12px; min-width: 150px; }</style>
+</head>
+<body class="wp-admin wp-core-ui">
+<div class="mlt" dir="rtl" style="padding-top:16px">
+  <h1>نمونه‌ی استایل کنترل‌ها</h1>
+  <p class="mlt-hint">ماوس را روی هر کنترل ببر (hover)، با Tab به آن برو (focus) و نگهش دار (active). هیچ‌کدام نباید سیاه یا ناخوانا شوند. چک خودکار: <code>python3 tests/css-check.py</code> و <code>node tests/css-states.js</code>.</p>
+
+  <div class="row"><span class="lbl">فیلتر وضعیت و ناقص</span>
+    <select data-ctl="select"><option>همه‌ی وضعیت‌ها</option><option>انجام نشده</option><option>در حال انجام</option><option>انجام‌شده</option></select>
+    <select data-ctl="select-disabled" disabled><option>غیرفعال</option></select>
+    <label class="mlt-check"><input type="checkbox"> فقط ناقص</label>
+    <button class="mlt-btn mlt-btn--ghost" data-ctl="ghost">فیلتر</button>
+    <button class="mlt-btn mlt-btn--ghost" data-ctl="ghost-disabled" disabled>فیلتر</button>
+  </div>
+  <div class="row"><span class="lbl">کلید تسک‌های من / همه</span>
+    <nav class="mlt-seg"><a href="#" class="is-on" data-ctl="seg-on">تسک‌های من</a><a href="#" data-ctl="seg">همه</a></nav>
+  </div>
+  <div class="row"><span class="lbl">دکمه‌ی اصلی</span>
+    <button class="mlt-btn" data-ctl="primary">+ افزودن تسک</button>
+    <button class="mlt-btn mlt-btn--sm" data-ctl="primary-sm">▶ شروع</button>
+    <button class="mlt-btn mlt-btn--sm" data-ctl="primary-disabled" disabled>▶ شروع</button>
+  </div>
+  <div class="mlt-card" style="max-width:640px"><div class="mlt-card-top"><button class="mlt-code" data-ctl="code">MH-12</button><span class="mlt-badge">نمونه</span></div>
+    <h3>کارت نمونه</h3>
+    <div class="mlt-actions">
+      <form class="mlt-status"><select class="mlt-status-select" data-ctl="select-card"><option>انجام نشده</option><option>در حال انجام</option><option>انجام‌شده</option></select></form>
+      <button type="button" class="mlt-link-btn" data-ctl="linkbtn">ویرایش</button>
+      <button type="button" class="mlt-link-btn" data-ctl="linkbtn2">کامنت‌ها (0)</button>
+      <button type="button" class="mlt-link-btn" data-ctl="linkbtn3">📋 تحویل به ایجنت</button>
+      <button type="button" class="mlt-link-btn" data-ctl="linkbtn-disabled" disabled>غیرفعال</button>
+      <button type="button" class="mlt-link-btn mlt-link-btn--danger" data-ctl="danger">حذف</button>
+    </div>
+  </div>
+  <div class="row"><span class="lbl">سه‌حالته</span>
+    <form class="mlt-tri"><button type="button" class="mlt-tri-open" data-ctl="tri" >انجام نشده</button><button type="button" class="mlt-tri-in_progress" data-ctl="tri2">در حال انجام</button><button type="button" class="mlt-tri-done" disabled>انجام‌شده</button></form>
+  </div>
+  <div class="row"><span class="lbl">متفرقه</span>
+    <button class="mlt-x" data-ctl="x" aria-label="بستن">×</button>
+    <span class="mlt-tip" tabindex="0" data-ctl="tip" title="راهنما">؟</span>
+    <a href="#" data-ctl="link">یک لینک</a>
+  </div>
+  <form class="mlt-form" style="max-width:640px">
+    <label class="mlt-field">متن <input type="text" data-ctl="input" value="نمونه"></label>
+    <label class="mlt-field">عدد <input type="number" data-ctl="input-number" value="30"></label>
+    <label class="mlt-field">غیرفعال <input type="text" data-ctl="input-disabled" value="x" disabled></label>
+    <label class="mlt-field mlt-field--wide">توضیح <textarea data-ctl="textarea" rows="2">نمونه</textarea></label>
+  </form>
+</div>
+</body>
+</html>

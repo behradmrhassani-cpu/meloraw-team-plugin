@@ -9,6 +9,9 @@
   --cyan: #33d1c9;    /* رنگ دوم سایت (فقط لینک و کد) */
   --red: #e5484d;     /* خطا و «دیر شده» */
   --green: #46a758;   /* وضعیت «انجام‌شده» */
+  --hover: #1b1d21;   /* پس‌زمینه‌ی هاور و فشردن (روشن‌تر از --raised) */
+  --gold-press: #d8922d; /* دکمه‌ی اصلی هنگام فشردن */
+  --cyan-hover: #7ae6e0; /* لینک در هاور */
   --font-head: Rajdhani, Vazirmatn, Tahoma, sans-serif;
   --font-body: Manrope, Vazirmatn, Tahoma, sans-serif;
   --gap: 28px;
@@ -255,3 +258,70 @@
 .mlt-actions .mlt-notify--inline .mlt-notify-toggle:checked ~ .mlt-notify-body { display: block; width: 100%; }
 .mlt-bars svg { transform: scaleX(-1); } /* RTL: the bars grow from the right */
 .mlt-bars > span svg + svg { margin-top: 3px; }
+
+
+/* ---------- حالت‌ها: normal / hover / focus / active / disabled ----------
+   ادمین وردپرس برای select و لینک و فیلدها قاعده‌ی :hover و :focus دارد (مثلاً select:hover { color: #0a4b78 !important}
+   و a:hover { color: #135e96 !important}) که روی پس‌زمینه‌ی تیره متن را تیره و ناخوانا می‌کند. اینجا برای هر کنترل، رنگ متن و
+   پس‌زمینه در همه‌ی حالت‌ها صریح نوشته شده و با .mlt شروع می‌شود تا بر قاعده‌های وردپرس غلبه کند.
+   کنتراست همه‌ی جفت‌رنگ‌ها ≥ 4.5 است (tests/css-check.py آن را می‌سنجد). */
+.mlt { color-scheme: dark; }
+.mlt a, .mlt a:visited { color: var(--cyan); }
+.mlt a:hover, .mlt a:active { color: var(--cyan-hover) !important; }
+.mlt a:focus { color: var(--cyan-hover) !important; outline: 2px solid var(--gold); outline-offset: 2px; box-shadow: none; }
+
+/* select (فیلتر وضعیت، فیلتر مسئول، دلیل پاز، تغییر وضعیت روی کارت، …) */
+.mlt select { background-color: var(--raised); color: var(--ink); border: 1px solid var(--line); }
+.mlt select option { background-color: var(--raised); color: var(--ink); }
+.mlt select:hover { background-color: var(--hover) !important; color: var(--ink) !important; border-color: var(--dim); }
+.mlt select:focus { background-color: var(--raised) !important; color: var(--ink) !important; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); outline: none; }
+.mlt select:active { background-color: var(--hover) !important; color: var(--ink) !important; border-color: var(--gold); }
+.mlt select:disabled { background-color: var(--raised) !important; color: var(--dim) !important; border-color: var(--line); opacity: .7; cursor: not-allowed; }
+
+/* فیلدهای متنی */
+.mlt input:not([type=checkbox]):not([type=radio]):not([type=file]):hover, .mlt textarea:hover { background-color: var(--bg) !important; color: var(--ink) !important; border-color: var(--dim); }
+.mlt input:not([type=checkbox]):not([type=radio]):not([type=file]):focus, .mlt textarea:focus { background-color: var(--bg) !important; color: var(--ink) !important; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); outline: none; }
+.mlt input:not([type=checkbox]):not([type=radio]):not([type=file]):disabled, .mlt textarea:disabled { background-color: var(--raised) !important; color: var(--dim) !important; border-color: var(--line); opacity: .7; }
+
+/* دکمه‌ی اصلی */
+.mlt .mlt-btn { background-color: var(--gold); color: var(--bg); border-color: var(--gold); text-decoration: none; }
+.mlt .mlt-btn:hover { background-color: var(--gold) !important; color: var(--bg) !important; border-color: var(--gold); filter: brightness(1.08); }
+.mlt .mlt-btn:focus { background-color: var(--gold) !important; color: var(--bg) !important; outline: 2px solid var(--ink); outline-offset: 2px; box-shadow: none; }
+.mlt .mlt-btn:active { background-color: var(--gold-press) !important; color: var(--bg) !important; border-color: var(--gold-press); filter: none; }
+.mlt .mlt-btn:disabled, .mlt .mlt-btn[disabled] { background-color: var(--line) !important; color: var(--dim) !important; border-color: var(--line); filter: none; opacity: 1; cursor: not-allowed; }
+/* دکمه‌ی ثانویه */
+.mlt .mlt-btn--ghost { background-color: transparent; color: var(--ink); border-color: var(--line); }
+.mlt .mlt-btn--ghost:hover { background-color: var(--hover) !important; color: var(--gold) !important; border-color: var(--gold); filter: none; }
+.mlt .mlt-btn--ghost:focus { background-color: var(--hover) !important; color: var(--gold) !important; border-color: var(--gold); outline: 2px solid var(--gold); outline-offset: 2px; }
+.mlt .mlt-btn--ghost:active { background-color: var(--raised) !important; color: var(--gold) !important; border-color: var(--gold); }
+.mlt .mlt-btn--ghost:disabled, .mlt .mlt-btn--ghost[disabled] { background-color: transparent !important; color: var(--dim) !important; border-color: var(--line); }
+
+/* دکمه‌های متنی روی کارت: ویرایش، کامنت‌ها، تحویل به ایجنت، حذف، پرچم */
+.mlt .mlt-link-btn, .mlt .mlt-linkbtn { background-color: transparent; color: var(--dim); border: 0; text-decoration: none; }
+.mlt .mlt-link-btn:hover, .mlt .mlt-linkbtn:hover { background-color: var(--hover) !important; color: var(--gold) !important; }
+.mlt .mlt-link-btn:focus, .mlt .mlt-linkbtn:focus { background-color: var(--hover) !important; color: var(--gold) !important; outline: 2px solid var(--gold); outline-offset: 1px; box-shadow: none; }
+.mlt .mlt-link-btn:active, .mlt .mlt-linkbtn:active { background-color: var(--raised) !important; color: var(--gold) !important; }
+.mlt .mlt-link-btn:disabled, .mlt .mlt-linkbtn:disabled { background-color: transparent !important; color: var(--dim) !important; cursor: not-allowed; opacity: .7; }
+.mlt .mlt-link-btn--danger:hover, .mlt .mlt-link-btn--danger:focus, .mlt .mlt-link-btn--danger:active { background-color: var(--hover) !important; color: #ff7b80 !important; }
+
+/* کلید «تسک‌های من / همه» */
+.mlt .mlt-seg a { background-color: transparent; color: var(--dim); text-decoration: none; }
+.mlt .mlt-seg a:hover { background-color: var(--hover) !important; color: var(--ink) !important; }
+.mlt .mlt-seg a:focus { background-color: var(--hover) !important; color: var(--ink) !important; outline: 2px solid var(--gold); outline-offset: -2px; box-shadow: none; }
+.mlt .mlt-seg a:active { background-color: var(--raised) !important; color: var(--gold) !important; }
+.mlt .mlt-seg a.is-on, .mlt .mlt-seg a.is-on:hover, .mlt .mlt-seg a.is-on:focus, .mlt .mlt-seg a.is-on:active { background-color: var(--raised) !important; color: var(--gold) !important; }
+
+/* سه‌حالته‌ی روتین‌ها و ایده‌ها */
+.mlt .mlt-tri button { background-color: var(--bg); color: var(--dim); }
+.mlt .mlt-tri button:not([disabled]):hover { background-color: var(--hover) !important; color: var(--ink) !important; }
+.mlt .mlt-tri button:not([disabled]):focus { background-color: var(--hover) !important; color: var(--ink) !important; outline: 2px solid var(--gold); outline-offset: -2px; }
+.mlt .mlt-tri button:not([disabled]):active { background-color: var(--raised) !important; color: var(--gold) !important; }
+
+/* کد تسک، ×، راهنمای ؟ */
+.mlt .mlt-code { background-color: transparent; color: var(--cyan); }
+.mlt .mlt-code:hover, .mlt .mlt-code:active { background-color: transparent !important; color: var(--cyan-hover) !important; }
+.mlt .mlt-code:focus { color: var(--cyan-hover) !important; outline: 2px solid var(--gold); outline-offset: 2px; box-shadow: none; }
+.mlt .mlt-x { background-color: transparent; color: var(--dim); }
+.mlt .mlt-x:hover, .mlt .mlt-x:focus, .mlt .mlt-x:active { background-color: var(--hover) !important; color: var(--ink) !important; outline: none; box-shadow: none; }
+.mlt .mlt-tip { background-color: transparent; color: var(--dim); }
+.mlt .mlt-tip:hover, .mlt .mlt-tip:focus, .mlt .mlt-tip:active { background-color: var(--hover) !important; color: var(--gold) !important; }
