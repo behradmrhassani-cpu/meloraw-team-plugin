@@ -153,6 +153,27 @@ check('order: due/late first (in progress before open), then high priority, then
 $future = ['due_date' => gmdate('Y-m-d', time() + 5 * 86400), 'priority' => 'high', 'status' => 'open'];
 check('a due date in the future does not count as due today', $rank($future)[0] === 1 && $rank($B)[0] === 0);
 
+echo "== health: every check runs on its own\n";
+add_filter('mlt_health_checks', function ($checks) {
+    $checks['boom'] = ['check that throws', function () { throw new RuntimeException('secret detail that must not leak'); }];
+    $checks['typeerr'] = ['check with a type error', function () { return strlen([]); }];
+    return $checks;
+});
+$ids = array_keys(MLT_Health::checks());
+$res = [];
+foreach ($ids as $id) { $res[$id] = MLT_Health::run($id); }
+check('all built-in checks plus the two broken ones are present', count($ids) === 15, implode(',', $ids));
+check('a thrown exception becomes a red result with a generic message (no detail leaked)', $res['boom'][0] === 'fail' && strpos(json_encode($res['boom'], JSON_UNESCAPED_UNICODE), 'secret detail') === false);
+check('a TypeError in a check is contained too', $res['typeerr'][0] === 'fail');
+$statuses = array_map(function ($r) { return $r[0]; }, array_diff_key($res, ['boom' => 1, 'typeerr' => 1]));
+check('the other 13 checks still returned ok / warn / fail', count($statuses) === 13 && !array_diff($statuses, ['ok', 'warn', 'fail']), json_encode($statuses));
+foreach ($res as $id => $r) {
+    if ($r[0] !== 'ok' && ($r[2] === '' || $r[1] === '')) { check("check $id is not green but has no message or fix", false); }
+}
+check('every non-green check explains what to do', true);
+$token_probe = MLT_Health::probe_permission(new WP_REST_Request('GET', '/x'));
+check('the probe route refuses a request without the token', is_wp_error($token_probe));
+
 $clean();
 echo $failed ? "\n$failed check(s) FAILED\n" : "\nall db scenarios passed\n";
 exit($failed ? 1 : 0);

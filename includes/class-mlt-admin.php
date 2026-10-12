@@ -14,7 +14,8 @@ class MLT_Admin
     const SETTINGS_SLUG = 'meloraw-tasks-settings';
     const TODAY_SLUG = 'meloraw-tasks-today';
     const TIME_SLUG = 'meloraw-tasks-time';
-    const PAGES = [self::SLUG, self::TODAY_SLUG, self::TIME_SLUG, self::IMPORT_SLUG, self::ROUTINES_SLUG, self::IDEAS_SLUG, self::REPORTS_SLUG, self::LOG_SLUG, self::SETTINGS_SLUG];
+    const HEALTH_SLUG = 'meloraw-tasks-health';
+    const PAGES = [self::SLUG, self::TODAY_SLUG, self::TIME_SLUG, self::HEALTH_SLUG, self::IMPORT_SLUG, self::ROUTINES_SLUG, self::IDEAS_SLUG, self::REPORTS_SLUG, self::LOG_SLUG, self::SETTINGS_SLUG];
 
     const LABELS = [
         'status'   => ['open' => 'انجام نشده', 'in_progress' => 'در حال انجام', 'done' => 'انجام‌شده'],
@@ -56,6 +57,7 @@ class MLT_Admin
         add_submenu_page(self::SLUG, 'لاگ فعالیت', 'لاگ', MLT_CAP, self::LOG_SLUG, ['MLT_Log', 'render']);
         add_submenu_page(self::SLUG, 'ایمپورت از فایل قدیمی', 'ایمپورت', MLT_CAP, self::IMPORT_SLUG, [__CLASS__, 'render_import']);
         add_submenu_page(self::SLUG, 'تنظیمات', 'تنظیمات', MLT_Settings::CAP, self::SETTINGS_SLUG, ['MLT_Settings', 'render']);
+        add_submenu_page(self::SLUG, 'بررسی سلامت', 'بررسی سلامت', MLT_Health::CAP, self::HEALTH_SLUG, ['MLT_Health', 'render']);
     }
 
     /** The plugin's own pages (admin.php?page=…) and its form handlers (admin-post.php?action=mlt_…): no indexing, no caching. */

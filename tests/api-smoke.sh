@@ -4,7 +4,7 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|timer|score|import|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|timer|score|import|probe|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
@@ -580,6 +580,17 @@ run_import() {
   req POST /import '{"format":"meloraw-tasks-import","version":1,"tasks":[{"title":"x"}]}' -; expect_code 401 "import بدون توکن"
 }
 
+# مسیر probe بررسی سلامت: بدون توکن یک‌بارمصرفِ خودِ صفحه هیچ‌کس (حتی ادمین) چیزی نمی‌گیرد
+run_probe() {
+  echo "== مسیر probe بررسی سلامت"
+  req GET /health/probe "" -;                      expect_code 401 "probe بدون توکن و بدون ورود"
+  expect_jq '.message' 'دسترسی ندارید.' "پیام کلی است"
+  req GET /health/probe;                           echo "$CODE" | grep -qE '^40[13]$' && ok "probe با ادمین ولی بدون توکن probe → $CODE" || bad "probe با ادمین بدون توکن → $CODE"
+  CODE=$(curl -s -o /tmp/mlt_body.$$ -w '%{http_code}' -H 'X-MLT-Probe: guess' -H 'Authorization: Bearer guess' "$MLT_BASE/health/probe"); BODY=$(cat /tmp/mlt_body.$$)
+  expect_code 401 "probe با توکن حدسی"
+  echo "$BODY" | grep -q authorization_seen && bad "probe اطلاعات داد" || ok "هیچ اطلاعاتی در خطا نیست"
+}
+
 # هدرهای امنیتی/کش روی همه‌ی پاسخ‌های REST افزونه (موفق، خطا، بدون توکن)
 expect_hdr() { echo "$HDRS" | grep -qiE "^$1: .*$2" && ok "$3" || bad "$3 (هدر $1 نیست)"; }
 run_headers() {
@@ -678,8 +689,8 @@ run_ratelimit() {
 
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; timer) run_timer ;; score) run_score ;; import) run_import ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_timer; run_score; run_import; run_headers; run_scope; run_export; run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; timer) run_timer ;; score) run_score ;; import) run_import ;; probe) run_probe ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_timer; run_score; run_import; run_probe; run_headers; run_scope; run_export; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

@@ -168,8 +168,8 @@ class MLT_REST
      */
     public static function guard($response, $handler, $request)
     {
-        if (!self::is_ours($request)) {
-            return $response;
+        if (!self::is_ours($request) || MLT_Health::is_probe_route($request->get_route())) {
+            return $response; // the health probe has its own token check (permission_callback)
         }
         if (!current_user_can(MLT_CAP)) {
             return self::forbidden();

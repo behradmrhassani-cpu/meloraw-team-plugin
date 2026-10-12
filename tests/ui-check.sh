@@ -4,7 +4,7 @@
 #   MLT_SITE=https://example.com \
 #   MLT_LOGIN1='user:password' MLT_LOGIN2='user2:password'   # دو ادمین (رمز ورود، نه Application Password)
 #   MLT_LOGIN_NOCAP='editor:password'                       # اختیاری
-#   tests/ui-check.sh [clock|banner|settings|board|routines|today|time|import|all]
+#   tests/ui-check.sh [clock|banner|settings|board|routines|today|time|import|health|all]
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند. فرم‌ها با همان nonce خودشان ارسال می‌شوند.
 
@@ -405,9 +405,72 @@ for m in re.findall(r"href=\"([^\"]*mlt_template[^\"]*)\"", sys.stdin.read()): p
   rm -rf "$tmp"
 }
 
+# بررسی سلامت: دسترسی، همه‌ی چک‌ها، هر چک مستقل، دکمه‌ی تلگرام آزمایشی (بدون تلگرام تنظیم‌شده: هیچ ارسالی نمی‌شود)
+run_health() {
+  echo "== بررسی سلامت"
+  local h id st n code body nonce bodytxt
+  h=$(page "$JAR1" meloraw-tasks-health)
+  has "$h" 'class="mlt-health"' && ok "صفحه برای ادمین باز می‌شود" || bad "صفحه‌ی بررسی سلامت باز نشد"
+  for id in schema php db innodb https apppass authz headers clock identity telegram counts agents; do
+    st=$(grep -o "id=\"mlt-check-$id\" data-status=\"[a-z]*\"" <<<"$h" | grep -o 'data-status="[a-z]*"' | cut -d'"' -f2)
+    case "$st" in ok|warn|fail) ok "چک $id: $st";; *) bad "چک $id نیست یا وضعیتش نامعتبر است ('$st')";; esac
+  done
+  # هر چک غیرسبز راه حل دارد
+  printf '%s' "$h" | python3 -c '
+import re,sys
+h=sys.stdin.read()
+for m in re.finditer(r"<section class=\"mlt-check-card[^\"]*\" id=\"mlt-check-(\w+)\" data-status=\"(\w+)\">(.*?)</section>",h,re.S):
+    if m.group(2)!="ok" and "راه حل:" not in m.group(3): sys.exit(1)
+' && ok "هر چک زرد یا قرمز «راه حل» دارد" || bad "چک غیرسبز بدون راه حل"
+  for id in schema php db innodb apppass clock; do
+    grep -q "id=\"mlt-check-$id\" data-status=\"ok\"" <<<"$h" && ok "$id سبز" || bad "$id سبز نیست"
+  done
+  if [[ "$MLT_SITE" == https://* ]]; then
+    grep -q 'id="mlt-check-https" data-status="ok"' <<<"$h" && ok "HTTPS سبز (سایت https است)" || bad "HTTPS سبز نیست"
+  else
+    grep -q 'id="mlt-check-https" data-status="fail"' <<<"$h" && ok "HTTPS قرمز با راه حل (این سایت http است)" || bad "HTTPS روی سایت http باید قرمز باشد"
+  fi
+  grep -q 'id="mlt-check-authz" data-status="ok"' <<<"$h" && ok "هدر Authorization: سبز" || echo "  (authz سبز نیست: loopback یا سرور هدر را حذف می‌کند؛ توضیح صفحه را ببین)"
+  grep -q 'id="mlt-check-headers" data-status="ok"' <<<"$h" && ok "هدرهای X-Robots-Tag / Cache-Control / X-LiteSpeed-Cache-Control روی پاسخ API دیده شد" || echo "  (headers سبز نیست؛ توضیح صفحه را ببین)"
+  # شمارنده‌ها = API
+  if [ -n "${MLT_API:-}" ]; then
+    n=$(api "$MLT_AUTH" '/tasks' | jq '[.[]|select(.kind=="phase" or .kind=="new")]|length')
+    grep -A12 'id="mlt-check-counts"' <<<"$h" | grep -q "<td>$n" && ok "شمارنده‌ی تسک‌ها ($n) با API یکی است" || bad "شمارنده‌ی تسک‌ها با API نمی‌خواند ($n)"
+  fi
+  # رمز یا هش در صفحه نیست؛ فقط نام Application Passwordها
+  local leak; leak=$(grep -oE '(\$P\$|\$wp\$)[^ <]{6,}|([A-Za-z0-9]{4} ){5}[A-Za-z0-9]{4}' <<<"$h" | grep -E '^\$|[0-9A-Z]' | head -1)  # Application Password: 6 groups of 4 with a digit or capital (plain English words are not one)
+  [ -n "$leak" ] && bad "چیزی شبیه رمز یا هش در صفحه است: $leak" || ok "هیچ رمز یا هشی در صفحه نیست"
+  [ -n "${MLT_AUTH:-}" ] && grep -qF -- "${MLT_AUTH#*:}" <<<"$h" && bad "رمز آزمون در صفحه است" || ok "رمز آزمون در صفحه نیست"
+  grep -A8 'id="mlt-check-agents"' <<<"$h" | grep -qE 'Claude-|Hermes-|هیچ Application Password' && ok "نام رمزهای ایجنت (یا هشدار نبودنشان) نشان داده می‌شود" || bad "بخش رمزهای ایجنت"
+  # نگاشت: بدون چاکرا قرمز، با چاکرا سبز
+  if [ -n "${MLT_ID_MAP:-}" ] && [ -n "${MLT_ID_MAP_FULL:-}" ]; then
+    local keep=$MLT_ID_MAP
+    grep -q 'id="mlt-check-identity" data-status="fail"' <<<"$(MLT_ID_MAP="$keep" settings_post "$JAR1" >/dev/null; page "$JAR1" meloraw-tasks-health)" && ok "نگاشت ناقص (بدون چاکرا): قرمز" || bad "نگاشت ناقص قرمز نیست"
+    MLT_ID_MAP="$MLT_ID_MAP_FULL" settings_post "$JAR1" >/dev/null
+    grep -q 'id="mlt-check-identity" data-status="ok"' <<<"$(page "$JAR1" meloraw-tasks-health)" && ok "نگاشت کامل: سبز" || bad "نگاشت کامل سبز نیست"
+    MLT_ID_MAP="$keep" settings_post "$JAR1" >/dev/null
+  fi
+  # تلگرام: تنظیم‌نشده → زرد؛ دکمه فقط با nonce؛ خطا فارسی؛ در لاگ؛ بدون ارسال واقعی
+  grep -q 'id="mlt-check-telegram" data-status="warn"' <<<"$h" && ok "تلگرام تنظیم‌نشده: زرد" || echo "  (تلگرام روی این سایت تنظیم شده؛ تست «تنظیم‌نشده» رد شد)"
+  grep -q 'برای تست از یک گروه آزمایشی استفاده کن' <<<"$h" && ok "روی صفحه نوشته شده که از گروه آزمایشی استفاده شود" || bad "هشدار گروه آزمایشی نیست"
+  if grep -q 'id="mlt-check-telegram" data-status="warn"' <<<"$h"; then
+    body=$(python3 "$HERE/ui-form.py" action=mlt_health_telegram <<<"$h")
+    code=$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -d "$body" "$MLT_SITE/wp-admin/admin-post.php"); [ "$code" = 302 ] && ok "دکمه‌ی آزمایشی با nonce → ۳۰۲" || bad "دکمه‌ی آزمایشی: $code"
+    has "$(page "$JAR1" meloraw-tasks-health)" 'ارسال نشد: ارسال به تلگرام انجام نشد: توکن یا chat id در تنظیمات' && ok "تنظیم‌نشده: پیام فارسی (بدون ارسال واقعی)" || bad "پیام خطای تلگرام"
+    has "$(page "$JAR1" meloraw-tasks-log '&action=telegram_error')" 'failed: not_configured' && ok "خطا در لاگ ثبت شد (بدون توکن و بدون متن پیام)" || bad "خطا در لاگ نیست"
+  fi
+  [ "$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -d "action=mlt_health_telegram&_wpnonce=bad" "$MLT_SITE/wp-admin/admin-post.php")" = 403 ] && ok "دکمه‌ی آزمایشی با nonce بد: ۴۰۳" || bad "nonce بد پذیرفته شد"
+  [ "$(curl -s -o /dev/null -w '%{http_code}' -d "action=mlt_health_telegram" "$MLT_SITE/wp-admin/admin-post.php")" != 302 ] && ok "بدون ورود: پذیرفته نمی‌شود" || bad "بدون ورود پذیرفته شد"
+  if [ -n "${MLT_LOGIN_NOCAP:-}" ]; then
+    [ "$(curl -s -b "$JAR4" -o /dev/null -w '%{http_code}' "$MLT_SITE/wp-admin/admin.php?page=meloraw-tasks-health")" = 403 ] && ok "کاربر بدون نقش: صفحه ۴۰۳" || bad "کاربر بدون نقش صفحه را دید"
+    [ "$(curl -s -b "$JAR4" -o /dev/null -w '%{http_code}' -d "action=mlt_health_telegram&_wpnonce=x" "$MLT_SITE/wp-admin/admin-post.php")" = 403 ] && ok "کاربر بدون نقش: دکمه‌ی آزمایشی ۴۰۳" || bad "کاربر بدون نقش دکمه را زد"
+  fi
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "$MLT_SITE/wp-admin/admin.php?page=meloraw-tasks-health")" = 302 ] && ok "بدون ورود: به صفحه‌ی ورود ریدایرکت می‌شود" || bad "بدون ورود"
+}
+
 case "$SECTION" in
-  clock) run_clock ;; import) run_import ;; today) run_today ;; time) run_time ;; banner) run_banner ;; settings) run_settings ;; board) run_board ;; routines) run_routines ;;
-  all) run_clock; run_banner; run_settings; run_board; run_routines; run_today; run_time; run_import ;;
+  clock) run_clock ;; health) run_health ;; import) run_import ;; today) run_today ;; time) run_time ;; banner) run_banner ;; settings) run_settings ;; board) run_board ;; routines) run_routines ;;
+  all) run_clock; run_banner; run_settings; run_board; run_routines; run_today; run_time; run_import; run_health ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 [ $FAIL = 0 ] && echo "همه‌ی بررسی‌ها گذشت." || echo "بررسی ناموفق داشت."

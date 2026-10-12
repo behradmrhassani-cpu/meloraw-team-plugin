@@ -325,3 +325,21 @@
 .mlt .mlt-x:hover, .mlt .mlt-x:focus, .mlt .mlt-x:active { background-color: var(--hover) !important; color: var(--ink) !important; outline: none; box-shadow: none; }
 .mlt .mlt-tip { background-color: transparent; color: var(--dim); }
 .mlt .mlt-tip:hover, .mlt .mlt-tip:focus, .mlt .mlt-tip:active { background-color: var(--hover) !important; color: var(--gold) !important; }
+
+/* ---------- بررسی سلامت ---------- */
+.mlt-health { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px 24px; align-items: start; margin-bottom: var(--gap); }
+.mlt-check-card { background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-right: 3px solid var(--line); }
+.mlt-check--ok { border-right-color: var(--green); }
+.mlt-check--warn { border-right-color: var(--gold); }
+.mlt-check--fail { border-right-color: var(--red); }
+.mlt-check-card h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.mlt-check-card .mlt-badge { margin-inline-start: auto; }
+.mlt-check--ok .mlt-badge { color: var(--green); border-color: var(--green); }
+.mlt-check--warn .mlt-badge { color: var(--gold); border-color: var(--gold); }
+.mlt-check--fail .mlt-badge { color: var(--red); border-color: var(--red); }
+.mlt-check-msg { margin: 0; font-size: 13px; line-height: 1.9; }
+.mlt-check-fix { margin: 8px 0 0; font-size: 12px; color: var(--dim); line-height: 1.9; border-top: 1px solid var(--line); padding-top: 8px; }
+.mlt-check-fix strong { color: var(--ink); font-weight: 600; }
+.mlt-check-table { border-collapse: collapse; margin: 8px 0 0; font-size: 12px; width: 100%; }
+.mlt-check-table th, .mlt-check-table td { text-align: right; padding: 3px 0; vertical-align: top; }
+.mlt-check-table th { color: var(--dim); font-weight: 400; padding-inline-end: 14px; white-space: nowrap; }
