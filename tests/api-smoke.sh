@@ -4,7 +4,7 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|timer|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
@@ -340,6 +340,80 @@ run_estimate() {
   [ -n "${MLT_AUTH_NOCAP:-}" ] && { req PATCH "/routines/$key" '{"stopped":true}' "$MLT_AUTH_NOCAP"; expect_code 403 "توقف روتین بدون نقش ادمین"; }
 }
 
+# زمان‌سنج: یک تایمر فعال برای هر کاربر، فقط صاحبش، پاز با دلیل، دو معیار زمان
+#   MLT_AUTH2=user:pass   (اختیاری) کاربر دوم برای تست «فقط صاحب تایمر»
+run_timer() {
+  echo "== زمان‌سنج"
+  local a b ca cb i
+  new_task '{"title":"تایمر الف"}'; a=$NEW_ID; ca=$(echo "$BODY" | jq -r .code)
+  new_task '{"title":"تایمر ب"}';  b=$NEW_ID; cb=$(echo "$BODY" | jq -r .code)
+  req GET /timer "" -;                              expect_code 401 "timer بدون توکن"
+  req POST "/tasks/$a/timer/start" "" -;            expect_code 401 "شروع بدون توکن"
+  [ -n "${MLT_AUTH_NOCAP:-}" ] && { req POST "/tasks/$a/timer/start" "" "$MLT_AUTH_NOCAP"; expect_code 403 "شروع بدون نقش ادمین"; }
+  req GET /timer;                                   expect_jq '.active' 'false' "اول تایمر فعالی نیست"
+
+  req POST "/tasks/$a/timer/start";                 expect_code 200 "شروع تایمر"
+  expect_jq '[.active,.state,.task.code,.attention]|map(tostring)|join(",")' "true,running,$ca,null" "روشن است و روی $ca"
+  req GET "/tasks/$a"; expect_jq '.status' 'in_progress' "شروع تایمر تسک را «در حال انجام» می‌کند"
+  req POST "/tasks/$b/timer/start";                 expect_code 409 "تایمر دوم همزمان ممنوع"
+  echo "$BODY" | jq -r .message | grep -q "$ca" && ok "پیام می‌گوید کدام تایمر باز است" || bad "پیام کد را نمی‌گوید"
+  req POST "/tasks/$a/timer/pause" '{}';            expect_code 400 "پاز بدون دلیل"
+  expect_persian "پیام پاز بدون دلیل فارسی است"
+  req POST "/tasks/$a/timer/pause" '{"reason":"lazy"}'; expect_code 400 "پاز با دلیل ناشناخته"
+  req POST "/tasks/$a/timer/resume";                expect_code 409 "ادامه وقتی روشن است"
+  req POST "/tasks/$a/timer/pause" '{"reason":"food"}'; expect_code 200 "پاز با دلیل"
+  expect_jq '.state' 'paused' "پازشده"
+  req POST "/tasks/$a/timer/pause" '{"reason":"rest"}'; expect_code 409 "پاز دوباره"
+  req POST "/tasks/$b/timer/resume";                expect_code 409 "ادامه روی تسک دیگر"
+  req POST "/tasks/$b/timer/start";                 expect_code 409 "پازشده هم جای تایمر فعال را می‌گیرد"
+  req POST "/tasks/$a/timer/resume";                expect_code 200 "ادامه"
+  req POST "/tasks/$a/timer/finish";                expect_code 200 "پایان"
+  expect_jq '[.finished.final,.summary.entries,.summary.pause_count]|map(tostring)|join(",")' 'true,2,1' "دو بازه و یک پاز"
+  req GET /timer;                                   expect_jq '.active' 'false' "بعد از پایان فعال نیست"
+  req POST "/tasks/$a/timer/finish";                expect_code 409 "پایان دوباره"
+  req GET "/tasks/$a/time"
+  expect_jq '.total.by_reason.food.count' '1' "پاز غذا شمرده شد"
+  expect_jq '(.entries|length)' '2' "دو ردیف زمان"
+
+  # زمان واقعی: ۲ ثانیه کار، ۲ ثانیه پاز، ۱ ثانیه کار
+  req POST "/tasks/$b/timer/start" >/dev/null; sleep 2; req POST "/tasks/$b/timer/pause" '{"reason":"interrupted"}' >/dev/null; sleep 2
+  req POST "/tasks/$b/timer/resume" >/dev/null; sleep 1; req POST "/tasks/$b/timer/finish"
+  local n p t; n=$(echo "$BODY" | jq .summary.net_seconds); p=$(echo "$BODY" | jq .summary.pause_seconds); t=$(echo "$BODY" | jq .summary.total_seconds)
+  [ "$n" -ge 2 ] && [ "$n" -le 5 ] && ok "زمان خالص $n ثانیه (حدود ۳)" || bad "زمان خالص $n"
+  [ "$p" -ge 1 ] && [ "$p" -le 4 ] && ok "زمان پاز $p ثانیه (حدود ۲)" || bad "زمان پاز $p"
+  [ "$t" -ge "$n" ] && [ "$t" -le $((n + p + 1)) ] && [ "$t" -ge $((n + p - 1)) ] && ok "زمان کل $t = خالص + پاز" || bad "زمان کل $t (خالص $n، پاز $p)"
+  req GET "/tasks/$b/time"; expect_jq '.total.by_reason.interrupted.count' '1' "پاز «قطع شدن» جدا شمرده می‌شود"
+
+  # ساخت همزمان: فقط یک شروع موفق
+  seq 1 6 | xargs -P 6 -I{} curl -s -o /dev/null -w '%{http_code}\n' -u "$MLT_AUTH" -X POST "$MLT_BASE/tasks/$a/timer/start" > /tmp/mlt_par.$$
+  # تسک الف الان in_progress است؛ done نیست، پس شروع مجاز است
+  [ "$(grep -c '^200$' /tmp/mlt_par.$$)" = 1 ] && ok "۶ شروع همزمان: فقط یکی موفق" || bad "شروع همزمان: $(tr '\n' ' ' < /tmp/mlt_par.$$)"; rm -f /tmp/mlt_par.$$
+
+  # اصلاح زمان پایان («کی تموم کردی؟»)
+  req GET /timer; local st; st=$(echo "$BODY" | jq -r .entry.started_at)
+  req POST "/tasks/$a/timer/finish" '{"ended_at":"not a date"}';           expect_code 400 "زمان پایان نامعتبر"
+  req POST "/tasks/$a/timer/finish" '{"ended_at":"2999-01-01 00:00"}';     expect_code 400 "زمان پایان در آینده"
+  req POST "/tasks/$a/timer/finish" '{"ended_at":"2000-01-01 00:00"}';     expect_code 400 "زمان پایان قبل از شروع"
+  req POST "/tasks/$a/timer/finish" "{\"ended_at\":\"$st\"}";             expect_code 200 "پایان با زمان اصلاح‌شده"
+  expect_jq '.finished.ended_at' "$st" "زمان پایان همان است که گفتیم"
+
+  # فقط صاحب تایمر
+  if [ -n "${MLT_AUTH2:-}" ]; then
+    req POST "/tasks/$a/timer/start" >/dev/null
+    req POST "/tasks/$a/timer/pause" '{"reason":"rest"}' "$MLT_AUTH2";     expect_code 409 "کاربر دیگر نمی‌تواند تایمر من را پاز کند"
+    req POST "/tasks/$a/timer/finish" "" "$MLT_AUTH2";                     expect_code 409 "کاربر دیگر نمی‌تواند تایمر من را تمام کند"
+    req GET /timer "" "$MLT_AUTH2";                                        expect_jq '.active' 'false' "تایمر من در GET /timer او دیده نمی‌شود"
+    req POST "/tasks/$a/timer/start" "" "$MLT_AUTH2";                      expect_code 200 "او تایمر خودش را روی همان تسک دارد"
+    req POST "/tasks/$a/timer/finish" "" "$MLT_AUTH2" >/dev/null
+    req POST "/tasks/$a/timer/finish" >/dev/null
+    req GET "/tasks/$a/time"; expect_jq '(.by_user|keys|length) >= 2' 'true' "زمان هر کاربر جدا حساب می‌شود"
+  else
+    echo "  (MLT_AUTH2 تنظیم نشده؛ تست کاربر دوم رد شد)"
+    req POST "/tasks/$a/timer/start" >/dev/null; req POST "/tasks/$a/timer/finish" >/dev/null
+  fi
+  req POST /tasks/999999999/timer/start;            expect_code 404 "شروع روی تسک ناموجود"
+}
+
 # هدرهای امنیتی/کش روی همه‌ی پاسخ‌های REST افزونه (موفق، خطا، بدون توکن)
 expect_hdr() { echo "$HDRS" | grep -qiE "^$1: .*$2" && ok "$3" || bad "$3 (هدر $1 نیست)"; }
 run_headers() {
@@ -438,8 +512,8 @@ run_ratelimit() {
 
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_headers; run_scope; run_export; run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; timer) run_timer ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_timer; run_headers; run_scope; run_export; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

@@ -76,6 +76,16 @@ class MLT_REST
             ['POST', 'flag_comment'],
         ]);
 
+        self::route('/timer', [
+            ['GET', 'get_timer'],
+        ]);
+        self::route("/tasks/$id/time", [
+            ['GET', 'get_time'],
+        ]);
+        self::route("/tasks/$id/timer/start", [['POST', 'timer_start']]);
+        self::route("/tasks/$id/timer/pause", [['POST', 'timer_pause', ['reason' => ['type' => 'string', 'required' => true]]]]);
+        self::route("/tasks/$id/timer/resume", [['POST', 'timer_resume']]);
+        self::route("/tasks/$id/timer/finish", [['POST', 'timer_finish', ['ended_at' => ['type' => 'string']]]]);
         self::route("/tasks/$id/extend", [
             ['POST', 'extend_task', [
                 'estimate_minutes' => ['type' => 'integer', 'required' => true],
@@ -293,6 +303,45 @@ class MLT_REST
         return $task;
     }
 
+    // ---- timer (always the caller's own) ----
+
+    public static function get_timer()
+    {
+        return MLT_Timer::present_active(get_current_user_id());
+    }
+
+    public static function get_time(WP_REST_Request $request)
+    {
+        $id = self::task_id($request);
+        return self::find_task($id) ? MLT_Timer::task_time($id) : self::not_found();
+    }
+
+    private static function timer_result($result)
+    {
+        return is_wp_error($result) ? $result : MLT_Timer::present_active(get_current_user_id());
+    }
+
+    public static function timer_start(WP_REST_Request $request)
+    {
+        return self::timer_result(MLT_Timer::start(self::task_id($request)));
+    }
+
+    public static function timer_pause(WP_REST_Request $request)
+    {
+        return self::timer_result(MLT_Timer::pause(self::task_id($request), $request['reason']));
+    }
+
+    public static function timer_resume(WP_REST_Request $request)
+    {
+        return self::timer_result(MLT_Timer::resume(self::task_id($request)));
+    }
+
+    public static function timer_finish(WP_REST_Request $request)
+    {
+        $result = MLT_Timer::finish(self::task_id($request), $request->get_param('ended_at'));
+        return is_wp_error($result) ? $result : ['finished' => MLT_Timer::present_entry($result), 'summary' => MLT_Timer::summarize(MLT_Timer::entries_of_task((int) $result['task_id'], get_current_user_id()))];
+    }
+
     /** Raises the fixed estimate; a reason is required and the original estimate stays. */
     public static function extend_task(WP_REST_Request $request)
     {
@@ -406,7 +455,7 @@ class MLT_REST
         if (!$task) {
             return self::not_found();
         }
-        foreach (['mlt_comments', 'mlt_task_assignees', 'mlt_estimate_extensions'] as $table) {
+        foreach (['mlt_comments', 'mlt_task_assignees', 'mlt_estimate_extensions', 'mlt_time_entries'] as $table) {
             $wpdb->delete($wpdb->prefix . $table, ['task_id' => $id]);
         }
         $wpdb->delete("{$wpdb->prefix}mlt_tasks", ['id' => $id]);
