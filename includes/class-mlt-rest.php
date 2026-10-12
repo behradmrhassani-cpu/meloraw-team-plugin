@@ -76,6 +76,12 @@ class MLT_REST
             ['POST', 'flag_comment'],
         ]);
 
+        self::route('/scores', [
+            ['GET', 'get_scores', ['week' => ['type' => 'string'], 'user' => ['type' => 'string']]],
+        ]);
+        self::route('/scores/recalculate', [
+            ['POST', 'recalculate_scores'],
+        ]);
         self::route('/timer', [
             ['GET', 'get_timer'],
         ]);
@@ -303,6 +309,51 @@ class MLT_REST
         return $task;
     }
 
+    // ---- scores ----
+
+    /**
+     * Points of one week (default: this week). user = a login (default: the caller) or "all". Each person's points are
+     * visible to themselves and to administrators.
+     */
+    public static function get_scores(WP_REST_Request $request)
+    {
+        $week = $request->has_param('week') ? (string) $request['week'] : MLT_Score::week_key(time());
+        if (!preg_match('/^\d{4}-W\d{2}$/', $week)) {
+            return self::bad_request('هفته باید به شکل 2026-W42 باشد.');
+        }
+        $who = $request->has_param('user') ? (string) $request['user'] : wp_get_current_user()->user_login;
+        $user_id = null;
+        if ($who !== 'all') {
+            $u = get_user_by('login', $who);
+            if (!$u) {
+                return self::not_found();
+            }
+            $user_id = (int) $u->ID;
+        }
+        if (($user_id === null || $user_id !== get_current_user_id()) && !current_user_can('manage_options')) {
+            return self::forbidden();
+        }
+        $rows = array_map(['MLT_Score', 'present'], MLT_Score::rows($week, $user_id));
+        $totals = [];
+        foreach ($rows as $r) {
+            $t = &$totals[$r['user']];
+            $t = $t ?? ['user' => $r['user'], 'points' => 0, 'tasks' => 0, 'no_timer' => 0, 'late' => 0];
+            $t['points'] += $r['points'];
+            $t['tasks']++;
+            $t['no_timer'] += $r['has_timer'] ? 0 : 1;
+            $t['late'] += $r['late'] ? 1 : 0;
+            unset($t);
+        }
+        return ['week' => $week, 'totals' => array_values($totals), 'rows' => $rows];
+    }
+
+    /** Recomputes every score from the stored task data and time entries. */
+    public static function recalculate_scores()
+    {
+        list($rows, $changed) = MLT_Score::recalculate_all();
+        return ['rows' => $rows, 'changed' => $changed];
+    }
+
     // ---- timer (always the caller's own) ----
 
     public static function get_timer()
@@ -416,6 +467,10 @@ class MLT_REST
             }
             $data['estimate_original'] = $data['estimate_minutes']; // filling an incomplete task in
         }
+        if (isset($data['status']) && $data['status'] === 'done' && $old['status'] !== 'done') {
+            MLT_Score::before_done(get_current_user_id(), $id); // the caller's own timer on this task ends with it
+        }
+
         $data['updated_by'] = get_current_user_id();
         $data['updated_at'] = current_time('mysql', true);
         if ($wpdb->update("{$wpdb->prefix}mlt_tasks", $data, ['id' => $id]) === false) {
@@ -443,6 +498,7 @@ class MLT_REST
         }
         if (isset($data['status']) && $data['status'] !== $old['status']) {
             self::log_activity($id, 'status_change', sprintf('«%s»: %s → %s', $old['title'], $old['status'], $data['status']));
+            MLT_Score::on_status_change($old, self::find_task($id), $late_reason);
         }
         return self::format_task(self::find_task($id));
     }
@@ -455,7 +511,7 @@ class MLT_REST
         if (!$task) {
             return self::not_found();
         }
-        foreach (['mlt_comments', 'mlt_task_assignees', 'mlt_estimate_extensions', 'mlt_time_entries'] as $table) {
+        foreach (['mlt_comments', 'mlt_task_assignees', 'mlt_estimate_extensions', 'mlt_time_entries', 'mlt_scores'] as $table) {
             $wpdb->delete($wpdb->prefix . $table, ['task_id' => $id]);
         }
         $wpdb->delete("{$wpdb->prefix}mlt_tasks", ['id' => $id]);

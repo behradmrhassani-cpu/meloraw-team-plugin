@@ -4,7 +4,7 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|timer|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|timer|score|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
@@ -414,6 +414,66 @@ run_timer() {
   req POST /tasks/999999999/timer/start;            expect_code 404 "شروع روی تسک ناموجود"
 }
 
+# امتیاز هنگام done: بر اساس زمان خالص، تخمین اولیه و سررسید (مرزها در tests/db-scenarios.php)
+run_score() {
+  echo "== امتیاز"
+  local me a b c d week
+  req GET /me; me=$(echo "$BODY" | jq -r .user)
+  req GET /scores "" -;                             expect_code 401 "scores بدون توکن"
+  [ -n "${MLT_AUTH_NOCAP:-}" ] && { req GET /scores "" "$MLT_AUTH_NOCAP"; expect_code 403 "scores بدون نقش ادمین"; req POST /scores/recalculate "" "$MLT_AUTH_NOCAP"; expect_code 403 "بازمحاسبه بدون نقش ادمین"; }
+  req POST /scores/recalculate "" -;                expect_code 401 "بازمحاسبه بدون توکن"
+  req GET "/scores?week=bad";                       expect_code 400 "هفته‌ی نامعتبر"
+  req GET "/scores?user=nobody-here";               expect_code 404 "کاربر ناموجود"
+  req GET /scores;                                  week=$(echo "$BODY" | jq -r .week)
+  echo "$week" | grep -qE '^[0-9]{4}-W[0-9]{2}$' && ok "هفته‌ی جاری $week" || bad "هفته: $week"
+  local base; base=$(echo "$BODY" | jq "[.rows[]|.points]|add // 0")
+
+  # الف) با تایمر، بالای تخمین نمی‌رود: کامل × وزن (اولویت بالا = ۳)
+  new_task '{"title":"امتیاز الف","estimate_minutes":5,"priority":"high"}'; a=$NEW_ID
+  req POST "/tasks/$a/timer/start" >/dev/null; sleep 1
+  req PATCH "/tasks/$a" '{"status":"done"}';        expect_code 200 "done با تایمر روشن"
+  req GET /timer;                                   expect_jq '.active' 'false' "done تایمر خودم را تمام کرد"
+  req GET "/scores?week=$week"
+  expect_jq "[.rows[]|select(.task_id==$a)|[.points,.tier,.late,.has_timer]|map(tostring)|join(\",\")]|join(\";\")" '30,full,false,true' "تسک الف: ۱۰ × ۳ = ۳۰، کامل"
+  expect_jq "[.rows[]|select(.task_id==$a)|.estimate_original]|join(\",\")" '5' "مبنا: تخمین اولیه"
+
+  # ب) بدون تایمر: done می‌شود ولی امتیاز سرعت ندارد
+  new_task '{"title":"امتیاز ب","estimate_minutes":30}'; b=$NEW_ID
+  req PATCH "/tasks/$b" '{"status":"done"}';        expect_jq '.status' 'done' "بدون تایمر هم done می‌شود"
+  req GET "/scores?week=$week"
+  expect_jq "[.rows[]|select(.task_id==$b)|[.points,.tier,.has_timer]|map(tostring)|join(\",\")]|join(\";\")" '0,no_timer,false' "برچسب «بدون زمان‌سنج»، امتیاز ۰"
+
+  # ج) سررسید گذشته: خیلی کم (وزن متوسط ۲)؛ با دلیل دیرکرد کمی بیشتر؛ بازکردن امتیاز را پاک می‌کند
+  new_task '{"title":"امتیاز ج","estimate_minutes":30,"due_date":"'$(date -u -d '3 days ago' +%F)'"}'; c=$NEW_ID
+  expect_jq '.late' 'true' "از سررسید گذشته = دیر شده"
+  req GET "/tasks/$c"; expect_jq '.late' 'true' "برچسب دیر شده در GET"
+  req POST "/tasks/$c/timer/start" >/dev/null; sleep 1; req POST "/tasks/$c/timer/finish" >/dev/null
+  req PATCH "/tasks/$c" '{"status":"done"}'
+  expect_jq '.late' 'false' "done شد: دیگر «دیر شده» نیست"
+  req GET "/scores?week=$week"
+  expect_jq "[.rows[]|select(.task_id==$c)|[.points,.tier,.late,.late_reason]|map(tostring)|join(\",\")]|join(\";\")" '2,low,true,null' "دیرکرد بدون دلیل: ۱ × ۲"
+  req PATCH "/tasks/$c" '{"status":"open"}'
+  req GET "/scores?week=$week"; expect_jq "[.rows[]|select(.task_id==$c)]|length" '0' "بازکردن تسک امتیازش را برمی‌دارد"
+  req PATCH "/tasks/$c" '{"status":"done","late_reason":"منتظر فایل بودم"}'
+  req GET "/scores?week=$week"
+  expect_jq "[.rows[]|select(.task_id==$c)|[.points,.tier,.late_reason]|map(tostring)|join(\",\")]|join(\";\")" '4,low_reason,منتظر فایل بودم' "با دلیل دیرکرد: ۲ × ۲"
+
+  # د) تمدید مبنای امتیاز را عوض نمی‌کند
+  new_task '{"title":"امتیاز د","estimate_minutes":5}'; d=$NEW_ID
+  req POST "/tasks/$d/extend" '{"estimate_minutes":500,"reason":"تمدید برای آزمون امتیاز"}' >/dev/null
+  req POST "/tasks/$d/timer/start" >/dev/null; req POST "/tasks/$d/timer/finish" >/dev/null
+  req PATCH "/tasks/$d" '{"status":"done"}'
+  req GET "/scores?week=$week"; expect_jq "[.rows[]|select(.task_id==$d)|.estimate_original]|join(\",\")" '5' "بعد از تمدید هم مبنا ۵ دقیقه‌ی اولیه است"
+
+  # جمع هفتگی و بازمحاسبه
+  req GET "/scores?week=$week&user=$me"
+  expect_jq "[.totals[]|select(.user==\"$me\")|.points]|join(\",\")" "$((base + 30 + 0 + 4 + 20))" "جمع هفتگی من (۳۰ + ۰ + ۴ + ۲۰)"
+  expect_jq "[.rows[]|select(.task_id==$b)|.has_timer]|join(\",\")" 'false' "تسک ب در جمع با برچسب بدون زمان‌سنج"
+  req POST /scores/recalculate;                     expect_code 200 "بازمحاسبه"
+  expect_jq '.changed' '0' "امتیازها از قبل درست‌اند؛ چیزی عوض نشد"
+  req GET "/scores?week=$week&user=all";            expect_code 200 "نمای همه (ادمین)"
+}
+
 # هدرهای امنیتی/کش روی همه‌ی پاسخ‌های REST افزونه (موفق، خطا، بدون توکن)
 expect_hdr() { echo "$HDRS" | grep -qiE "^$1: .*$2" && ok "$3" || bad "$3 (هدر $1 نیست)"; }
 run_headers() {
@@ -512,8 +572,8 @@ run_ratelimit() {
 
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; timer) run_timer ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_timer; run_headers; run_scope; run_export; run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; timer) run_timer ;; score) run_score ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_timer; run_score; run_headers; run_scope; run_export; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

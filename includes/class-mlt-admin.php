@@ -440,7 +440,7 @@ class MLT_Admin
 
     public static function handle_set_status()
     {
-        self::patch('mlt_set_status', ['status'], 'وضعیت تغییر کرد', true);
+        self::patch('mlt_set_status', ['status', 'late_reason'], 'وضعیت تغییر کرد', true);
     }
 
     private static function patch($action, array $fields, $ok_msg, $may_notify = false)

@@ -96,6 +96,43 @@ $open = array_slice($rows, 0, 1);
 $s = MLT_Timer::summarize($open, $now);
 check('an open pause counts up to now', $s['pause_seconds'] === 10000 - 600 && $s['total_seconds'] === 10000, json_encode($s));
 
+echo "== score: the boundaries (pure function, estimate 60 min = 3600 s)\n";
+$pt = function ($priority, $est, $net, $timer, $late, $reason) { return implode(':', MLT_Score::points($priority, $est, $net, $timer, $late, $reason)); };
+check('exactly the estimate -> full 10 x 2', $pt('med', 60, 3600, true, false, false) === '20:full');
+check('1 s over -> half 5 x 2', $pt('med', 60, 3601, true, false, false) === '10:half');
+check('exactly +25 % (4500 s) -> still half', $pt('med', 60, 4500, true, false, false) === '10:half');
+check('1 s past +25 % -> very low 1 x 2', $pt('med', 60, 4501, true, false, false) === '2:low');
+check('far past +25 % with a reason -> 2 x 2', $pt('med', 60, 9000, true, false, true) === '4:low_reason');
+check('on time by the clock but past the due date -> very low', $pt('med', 60, 100, true, true, false) === '2:low');
+check('past the due date with a reason -> a bit more', $pt('med', 60, 100, true, true, true) === '4:low_reason');
+check('weights: high 30, med 20, low 10 (full)', $pt('high', 60, 1, true, false, false) === '30:full' && $pt('med', 60, 1, true, false, false) === '20:full' && $pt('low', 60, 1, true, false, false) === '10:full');
+check('weights on very low: 3 / 2 / 1', $pt('high', 60, 9999, true, false, false) === '3:low' && $pt('low', 60, 9999, true, false, false) === '1:low');
+check('no timer -> 0, even when late', $pt('high', 60, 0, false, true, false) === '0:no_timer');
+check('timer but no estimate -> 0, no_estimate', $pt('high', null, 600, true, false, false) === '0:no_estimate');
+check('a tiny estimate (5 min): 375 s is half, 376 s is low', $pt('low', 5, 375, true, false, false) === '5:half' && $pt('low', 5, 376, true, false, false) === '1:low');
+
+echo "== score: stored rows, the ORIGINAL estimate, recalculation\n";
+$ref = new DateTimeImmutable('2026-10-17 23:59:59', new DateTimeZone('UTC'));
+check('week of Sat 2026-10-17 23:59:59 UTC = W42', MLT_Score::week_key($ref->getTimestamp()) === '2026-W42');
+check('week of Sun 2026-10-18 00:00:00 UTC = W43', MLT_Score::week_key($ref->modify('+1 second')->getTimestamp()) === '2026-W43');
+
+$t2 = $mk('dbtest score', ['estimate_minutes' => 600, 'estimate_original' => 5, 'priority' => 'med', 'status' => 'done']); $created[] = $t2;
+$entry($t2, -360, 0, null, 1);  // 6 min of work; the estimate was 5 and then extended to 600
+$row = MLT_Score::record($wpdb->get_row("SELECT * FROM {$p}mlt_tasks WHERE id = $t2", ARRAY_A), $user);
+check('6 min against an original 5 (extended to 600) -> half, not full', $row['tier'] === 'half' && (int) $row['points'] === 10 && (int) $row['net_seconds'] === 360, json_encode($row));
+$wpdb->update("{$p}mlt_scores", ['points' => 999, 'tier' => 'full'], ['task_id' => $t2]);
+list($rows, $changed) = MLT_Score::recalculate_all();
+$fixed = $wpdb->get_row("SELECT points, tier FROM {$p}mlt_scores WHERE task_id = $t2", ARRAY_A);
+check('recalculation repairs a tampered row', $changed >= 1 && (int) $fixed['points'] === 10 && $fixed['tier'] === 'half', json_encode($fixed));
+list($rows, $changed) = MLT_Score::recalculate_all();
+check('a second recalculation changes nothing', $changed === 0);
+$wpdb->update("{$p}mlt_tasks", ['priority' => 'high'], ['id' => $t2]);
+MLT_Score::recalculate_all();
+check('a rule input (priority) changed -> recalculated 5 x 3', (int) $wpdb->get_var("SELECT points FROM {$p}mlt_scores WHERE task_id = $t2") === 15);
+$wpdb->update("{$p}mlt_tasks", ['status' => 'open'], ['id' => $t2]);
+MLT_Score::recalculate_all();
+check('a task that is no longer done loses its row', (int) $wpdb->get_var("SELECT COUNT(*) FROM {$p}mlt_scores WHERE task_id = $t2") === 0);
+
 $clean();
 echo $failed ? "\n$failed check(s) FAILED\n" : "\nall db scenarios passed\n";
 exit($failed ? 1 : 0);
