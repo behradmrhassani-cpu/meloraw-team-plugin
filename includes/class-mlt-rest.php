@@ -20,6 +20,7 @@ class MLT_REST
 
     const TITLE_MAX = 255;
     const BODY_MAX = 10000;
+    const DESCRIPTION_MAX = 20000;
 
     const RATE_LIMIT = 120; // REST calls per user per window (on top of the Telegram limit)
     const RATE_WINDOW = 60; // seconds
@@ -330,6 +331,9 @@ class MLT_REST
         }
         if (array_key_exists('description', $params)) {
             $data['description'] = sanitize_textarea_field((string) $request['description']);
+            if (mb_strlen($data['description']) > self::DESCRIPTION_MAX) {
+                return self::bad_request('توضیح طولانی‌تر از ' . self::DESCRIPTION_MAX . ' نویسه است.');
+            }
         }
         foreach (['status', 'bucket', 'priority', 'owner', 'kind'] as $field) {
             if (array_key_exists($field, $params)) {

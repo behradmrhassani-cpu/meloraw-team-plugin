@@ -20,6 +20,7 @@ class MLT_Transfer
     const FORMAT = 'meloraw-tasks-export';
     const VERSION = 1;
     const MAX_BYTES = 5242880;
+    const MAX_ROWS = 5000; // tasks, and comments, per file
     const MAX_REASONS = 30;
     const RECURRENCES = ['none', 'daily', 'weekly', 'monthly'];
     const META_KEYS = ['routine_id', 'type', 'category', 'tag'];
@@ -65,6 +66,10 @@ class MLT_Transfer
         $p = $wpdb->prefix;
         if (($data['version'] ?? null) !== self::VERSION || !isset($data['tasks']) || !is_array($data['tasks']) || (isset($data['comments']) && !is_array($data['comments']))) {
             return new WP_Error('mlt_import_format', 'قالب فایل export درست نیست (version، tasks یا comments).', ['status' => 400]);
+        }
+
+        if (count($data['tasks']) > self::MAX_ROWS || count($data['comments'] ?? []) > self::MAX_ROWS) {
+            return new WP_Error('mlt_too_large', 'تعداد ردیف‌ها بیش از ' . self::MAX_ROWS . ' تسک یا کامنت است.', ['status' => 413]);
         }
 
         $now = current_time('mysql', true);
@@ -198,8 +203,12 @@ class MLT_Transfer
         if (isset($r['description']) && !is_string($r['description'])) {
             return 'توضیح باید متن باشد';
         }
+        $description = sanitize_textarea_field($r['description'] ?? '');
+        if (mb_strlen($description) > MLT_REST::DESCRIPTION_MAX) {
+            return 'توضیح بیش از حد طولانی است';
+        }
 
-        $row = ['legacy_id' => $legacy, 'title' => $title, 'description' => sanitize_textarea_field($r['description'] ?? '')];
+        $row = ['legacy_id' => $legacy, 'title' => $title, 'description' => $description];
         $defaults = ['status' => 'open', 'bucket' => 'normal', 'priority' => 'med', 'owner' => null, 'kind' => 'new'];
         foreach ($defaults as $field => $default) {
             $value = $r[$field] ?? $default;

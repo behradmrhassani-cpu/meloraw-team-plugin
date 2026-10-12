@@ -5,7 +5,7 @@
 برای بریف کامل و قوانین پروژه، فایل [CLAUDE.md](CLAUDE.md) را ببین.
 
 ## نصب
-1. پوشه‌ی این ریپو را در `wp-content/plugins/meloraw-team-tasks/` کپی کن.
+1. فقط `meloraw-team-plugin.php`، `uninstall.php` و پوشه‌های `includes/` و `assets/` را در `wp-content/plugins/meloraw-team-tasks/` بگذار (مثلاً با یک zip). `CLAUDE.md`، `README.md`، `docs/`، `tests/` و `.git/` را روی سرور نگذار؛ وگرنه از وب قابل دانلود می‌شوند.
 2. افزونه را از پنل وردپرس فعال کن.
 
 ## تنظیمات
