@@ -512,7 +512,7 @@ class MLT_Admin
                         <span class="mlt-count"><?php echo esc_html($done . ' از ' . count($g['items']) . ' انجام‌شده'); ?></span>
                     </h2>
                     <?php if (!$g['items']) : ?>
-                        <p class="mlt-empty"><?php echo $only_incomplete ? 'روتین ناقصی نیست.' : 'روتینی تعریف نشده. فایل قدیمی را از «ایمپورت» وارد کن.'; ?></p>
+                        <p class="mlt-empty"><?php echo $only_incomplete ? 'روتین ناقصی نیست.' : 'روتینی تعریف نشده. از «ایمپورت» قالب نمونه یا فایل خودت را وارد کن.'; ?></p>
                     <?php endif; ?>
                     <div class="mlt-rgrid">
                         <?php foreach ($g['items'] as $v) : ?>
@@ -628,7 +628,7 @@ class MLT_Admin
             </header>
             <?php self::render_notice(); ?>
             <?php if (!$groups) : ?>
-                <p class="mlt-empty">ایده‌ای نیست. فایل قدیمی را از «ایمپورت» وارد کن.</p>
+                <p class="mlt-empty">ایده‌ای نیست. از «ایمپورت» قالب نمونه یا فایل خودت را وارد کن.</p>
             <?php endif; ?>
             <?php foreach ($groups as $type => $cats) : ?>
                 <?php $all = array_merge(...array_values($cats)); ?>

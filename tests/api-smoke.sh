@@ -4,7 +4,7 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|timer|score|import|probe|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|timer|score|import|probe|headers|scope|export|ratelimit|hidden|e2e|all]  (ratelimit و e2e جزو all نیستند؛ e2e فقط روی سایت خام)
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
@@ -687,9 +687,85 @@ run_ratelimit() {
   NO_RETRY=
 }
 
+# سناریوی «صفر تا صد» docs/test-checklist.md روی سایت خام (قدم‌های API). فقط وقتی سایت کاملاً خالی است اجرا می‌شود
+# و همه‌چیز را در پایان پاک می‌کند؛ جزو all نیست.
+run_e2e() {
+  echo "== صفر تا صد روی سایت خام"
+  local n; req GET /tasks; n=$(echo "$BODY" | jq length)
+  req GET /routines; n=$((n + $(echo "$BODY" | jq length)))
+  if [ "$n" != 0 ]; then echo "  - سایت خام نیست ($n مورد)؛ این بخش رد شد"; return; fi
+  ok "سایت خام است (تسک، روتین و ایده: صفر)"
+  req GET /export;                                 expect_jq '[.tasks,.comments]|map(length)|join(",")' '0,0' "export خالی"
+  req GET /scores;                                 expect_jq '.rows|length' '0' "امتیازی نیست"
+  req GET /timer;                                  expect_jq '.active' 'false' "تایمر فعالی نیست"
+
+  # ۴ و ۵) اول dry run، بعد ایمپورت واقعی، بعد دوباره (تکراری)
+  local full="$HERE/../docs/import-template/full-template.json"
+  req POST "/import?dry_run=1" "$(cat "$full")";   expect_jq '[.dry,.sections.tasks.created,.sections.routines.created,.sections.ideas.created]|map(tostring)|join(",")' 'true,3,3,3' "dry run: ۳/۳/۳ ساخته می‌شد"
+  req GET /tasks;                                  expect_jq 'length' '0' "dry run هیچ‌چیز نساخت"
+  req POST /import "$(cat "$full")";               expect_jq '[.sections.tasks.created,.sections.routines.created,.sections.ideas.created]|join(",")' '3,3,3' "ایمپورت واقعی ۳/۳/۳"
+  req GET /tasks;                                  expect_jq '[.[]|select(.kind!="routine" and .kind!="idea")]|length' '3' "سه تسک عادی"
+  echo "$BODY" | jq -e '[.[]|select(.kind!="routine" and .kind!="idea")|.code]|all(test("^(MH|MA|CH)-[0-9]+$"))' >/dev/null && ok "کدهای پیوسته ساخته شد" || bad "کدها"
+  req POST /import "$(cat "$full")";               expect_jq '[.sections[]|.created]|add' '0' "ایمپورت دوباره: چیزی اضافه نشد"
+  req GET /routines;                               expect_jq 'length' '3' "سه روتین"
+  req GET "/tasks?kind=idea";                      expect_jq 'length' '3' "سه ایده"
+
+  # ۶ و ۷) تسک دستی/API: تخمین اجباری، کد، مسئول‌ها، بدون توکن
+  req POST /tasks '{"title":"تست API ۱"}';         expect_code 400 "بدون زمان تقریبی ردش می‌کند"
+  expect_persian "  پیام فارسی است"
+  new_task '{"title":"تست API ۱","owner":"you","estimate_minutes":20,"priority":"high","assignees":["maral"]}'
+  local id=$NEW_ID code; code=$(echo "$BODY" | jq -r .code)
+  expect_jq '(.assignees|sort|join(","))' 'maral,you' "مسئول‌ها: you و maral"
+  req GET "/tasks/$code";                          expect_jq '.id' "$id" "خواندن با کد $code"
+  req GET /tasks "" -;                             expect_code 401 "بدون توکن ۴۰۱"
+
+  req GET "/tasks?mine=1"
+  if [ "$CODE" = 409 ]; then ok "«تسک‌های من» بدون نگاشت هویت → ۴۰۹ فارسی"; else expect_code 200 "«تسک‌های من» (هویت نگاشت شده)"; fi
+
+  # ۸ و ۹) وضعیت، کامنت، پرچم
+  req PATCH "/tasks/$id" '{"status":"in_progress"}'; expect_code 200 "وضعیت → در حال انجام"
+  req POST "/tasks/$id/comments" '{"body":"کامنت تست"}'; local cid; cid=$(echo "$BODY" | jq -r .id)
+  req POST "/tasks/$id/comments/$cid/flag";        expect_jq '.flagged' 'true' "پرچم"
+
+  # ۱۰ و ۱۱) تایمر، پاز، پایان، امتیاز
+  req POST "/tasks/$id/timer/start";               expect_code 200 "شروع تایمر"
+  req POST "/tasks/$id/timer/pause" '{"reason":"food"}'; expect_code 200 "پاز (غذا)"
+  req POST "/tasks/$id/timer/resume";              expect_code 200 "ادامه"
+  sleep 1
+  req POST "/tasks/$id/timer/finish";              expect_jq '.summary.pause_count' '1' "پایان؛ یک پاز"
+  req PATCH "/tasks/$id" '{"status":"done"}';      expect_code 200 "done"
+  req GET /scores
+  expect_jq "[.rows[]|select(.task_id==$id)|.tier]|join(\",\")" 'full' "امتیاز با سطح کامل ثبت شد"
+
+  # ۱۲) امروز من = تسک‌های باز خودم
+  req GET /me; local me; me=$(echo "$BODY" | jq -r .user)
+  req GET "/tasks?owner=$me&status=open";          expect_code 200 "تسک‌های باز من خوانده می‌شود"
+
+  # ۱۴) تلگرام بدون تنظیم: ارسال نمی‌شود و خطای فارسی می‌دهد
+  req POST /notify '{"text":"تست دستی"}';          expect_code 409 "تلگرام تنظیم‌نشده → ۴۰۹"
+  expect_persian "  پیام فارسی است"
+
+  # ۱۵) روتین: وضعیت همین دوره
+  req GET /routines; local rk; rk=$(echo "$BODY" | jq -r '[.[]|select(.frequency=="daily")][0].key')
+  req PATCH "/routines/$rk" '{"status":"done"}';   expect_code 200 "روتین روزانه done"
+  req GET /routines;                               expect_jq "[.[]|select(.key==\"$rk\")|.status]|join(\",\")" 'done' "وضعیت روتین ماند"
+
+  # ۱۷) export و ۱۸) حذف همه تا صفر
+  req GET /export;                                 expect_jq '(.tasks|length) > 0' 'true' "export پر شد"
+  echo "$BODY" | jq -e '[.. | objects | keys[] | select(test("pass|token|secret";"i"))]|length==0' >/dev/null && ok "export بدون فیلد حساس" || bad "فیلد حساس"
+  local all i; req GET /tasks; all=$(echo "$BODY" | jq -r '.[].id')
+  req GET "/tasks?kind=routine"; all="$all $(echo "$BODY" | jq -r '.[].id')"
+  req GET "/tasks?kind=idea"; all="$all $(echo "$BODY" | jq -r '.[].id')"
+  for i in $(echo $all | tr ' ' '\n' | sort -un); do req DELETE "/tasks/$i"; done
+  CREATED=()
+  req GET /tasks;                                  expect_jq 'length' '0' "همه‌ی تسک‌ها حذف شد"
+  req GET /routines;                               expect_jq 'length' '0' "روتینی نمانده"
+  req GET "/tasks?kind=idea";                      expect_jq 'length' '0' "ایده‌ای نمانده"
+}
+
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; timer) run_timer ;; score) run_score ;; import) run_import ;; probe) run_probe ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; timer) run_timer ;; score) run_score ;; import) run_import ;; probe) run_probe ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;; e2e) run_e2e ;;
   all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_timer; run_score; run_import; run_probe; run_headers; run_scope; run_export; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac

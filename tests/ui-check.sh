@@ -4,7 +4,7 @@
 #   MLT_SITE=https://example.com \
 #   MLT_LOGIN1='user:password' MLT_LOGIN2='user2:password'   # دو ادمین (رمز ورود، نه Application Password)
 #   MLT_LOGIN_NOCAP='editor:password'                       # اختیاری
-#   tests/ui-check.sh [clock|banner|settings|board|routines|today|time|import|health|all]
+#   tests/ui-check.sh [clock|banner|settings|board|routines|today|time|import|health|e2e|all]
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند. فرم‌ها با همان nonce خودشان ارسال می‌شوند.
 
@@ -468,8 +468,23 @@ for m in re.finditer(r"<section class=\"mlt-check-card[^\"]*\" id=\"mlt-check-(\
   [ "$(curl -s -o /dev/null -w '%{http_code}' "$MLT_SITE/wp-admin/admin.php?page=meloraw-tasks-health")" = 302 ] && ok "بدون ورود: به صفحه‌ی ورود ریدایرکت می‌شود" || bad "بدون ورود"
 }
 
+# صفحه‌های پنل روی سایت خام (قدم‌های ۱ و ۳ و ۱۸ چک‌لیست). اگر سایت خام نباشد رد می‌شود؛ جزو all نیست.
+run_e2e() {
+  echo "== پنل روی سایت خام"
+  local h pair slug
+  h=$(page "$JAR1" meloraw-tasks-health)
+  if ! has "$h" 'هنوز هیچ تسک، روتین یا ایده‌ای نیست'; then echo "  - سایت خام نیست؛ این بخش رد شد"; return; fi
+  ok "سلامت: شمارنده‌ها هشدار «هنوز هیچ تسک…» با راه حل"
+  for pair in meloraw-tasks:'تسکی نیست.' meloraw-tasks-routines:'روتینی تعریف نشده' meloraw-tasks-ideas:'ایده‌ای نیست' meloraw-tasks-reports:'کامنت پرچم‌داری نیست' meloraw-tasks-today:'ساخته نمی‌شود' meloraw-tasks-time:'زمانی ثبت نشده'; do
+    slug=${pair%%:*}; h=$(page "$JAR1" "$slug")
+    has "$h" "${pair#*:}" && ok "$slug: وضعیت خالی" || bad "$slug: متن وضعیت خالی نیست"
+    grep -qE '(Warning|Notice|Deprecated|Fatal error)</b>:|(Warning|Notice|Deprecated|Fatal error): .* on line' <<<"$h" && bad "$slug: خطا/هشدار PHP در خروجی" || true
+  done
+  has "$(page "$JAR1" meloraw-tasks-import)" 'دانلود قالب' && ok "ایمپورت: دکمه‌های قالب" || bad "ایمپورت: قالب نیست"
+}
+
 case "$SECTION" in
-  clock) run_clock ;; health) run_health ;; import) run_import ;; today) run_today ;; time) run_time ;; banner) run_banner ;; settings) run_settings ;; board) run_board ;; routines) run_routines ;;
+  clock) run_clock ;; e2e) run_e2e ;; health) run_health ;; import) run_import ;; today) run_today ;; time) run_time ;; banner) run_banner ;; settings) run_settings ;; board) run_board ;; routines) run_routines ;;
   all) run_clock; run_banner; run_settings; run_board; run_routines; run_today; run_time; run_import; run_health ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
