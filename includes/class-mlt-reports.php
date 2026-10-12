@@ -88,7 +88,6 @@ class MLT_Reports
         }
         $rows = self::flagged();
         cache_users(array_unique(array_map('intval', wp_list_pluck($rows, 'author'))));
-        $tz = wp_timezone_string() === '+00:00' ? 'UTC' : wp_timezone_string();
         ?>
         <div class="mlt" dir="rtl">
             <header class="mlt-head">
@@ -96,7 +95,7 @@ class MLT_Reports
             </header>
             <?php MLT_Admin::render_notice(); ?>
             <h2 class="mlt-sub">کامنت‌های پرچم‌دار <span class="mlt-count"><?php echo esc_html(count($rows)); ?></span></h2>
-            <p class="mlt-hint">با «تبدیل به تسک»، از کامنت یک تسک جدید ساخته می‌شود (با همان مسئولِ تسکی که کامنت روی آن بوده) و پرچم کامنت برداشته می‌شود. زمان‌ها به وقت <code dir="ltr"><?php echo esc_html($tz); ?></code> است.</p>
+            <p class="mlt-hint">با «تبدیل به تسک»، از کامنت یک تسک جدید ساخته می‌شود (با همان مسئولِ تسکی که کامنت روی آن بوده) و پرچم کامنت برداشته می‌شود. زمان‌ها به وقت <code dir="ltr"><?php echo esc_html(MLT_Time::ZONE); ?></code> است.</p>
             <?php if (!$rows) : ?>
                 <p class="mlt-empty">کامنت پرچم‌داری نیست.</p>
             <?php endif; ?>
@@ -112,7 +111,7 @@ class MLT_Reports
                             <?php if ($c['agent'] !== null && $c['agent'] !== '') : ?>
                                 <span class="mlt-tag"><?php echo esc_html($c['agent']); ?></span>
                             <?php endif; ?>
-                            <time><?php echo esc_html(wp_date('Y/m/d H:i', strtotime($c['created_at'] . ' UTC'))); ?></time>
+                            <time><?php echo esc_html(MLT_Time::format($c['created_at'])); ?></time>
                         </div>
                         <div class="mlt-c-body"><?php echo MLT_Admin::comment_html($c['body']); ?></div>
                         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mlt-convert">

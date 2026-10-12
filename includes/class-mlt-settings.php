@@ -20,6 +20,12 @@ class MLT_Settings
         'telegram_bot_token' => 'MLT_TELEGRAM_BOT_TOKEN',
     ];
 
+    /** The value in effect: a wp-config.php constant wins over the saved setting. Only MLT_Telegram reads the token. */
+    public static function value($field)
+    {
+        return defined(self::FIELDS[$field]) ? (string) constant(self::FIELDS[$field]) : (string) (self::stored()[$field] ?? '');
+    }
+
     private static function stored()
     {
         $value = get_option(self::OPTION, []);
@@ -110,7 +116,7 @@ class MLT_Settings
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mlt-import mlt-settings" autocomplete="off">
                 <input type="hidden" name="action" value="mlt_save_settings">
                 <?php wp_nonce_field('mlt_save_settings'); ?>
-                <p class="mlt-hint">اتصال به تلگرام. فعلاً فقط ذخیره می‌شود؛ هیچ پیامی ارسال نمی‌شود و هیچ‌چیز خودکار به تلگرام نمی‌رود. اگر مقداری در <code dir="ltr">wp-config.php</code> تعریف شده باشد (<code dir="ltr">MLT_TELEGRAM_*</code>)، همان استفاده می‌شود و فیلدش قفل است.</p>
+                <p class="mlt-hint">اتصال به تلگرام. هیچ‌چیز خودکار به تلگرام نمی‌رود: پیام فقط وقتی ارسال می‌شود که کسی چک‌باکس «📣 ارسال به تلگرام» را بزند یا endpointهای notify را صدا بزند، و دقیقاً همان متن ارسال می‌شود. اگر مقداری در <code dir="ltr">wp-config.php</code> تعریف شده باشد (<code dir="ltr">MLT_TELEGRAM_*</code>)، همان استفاده می‌شود و فیلدش قفل است.</p>
 
                 <label class="mlt-field">شناسه‌ی چت (chat id)
                     <input type="text" name="telegram_chat_id" dir="ltr" maxlength="40" value="<?php echo $locked('telegram_chat_id') ? '' : esc_attr($s['telegram_chat_id'] ?? ''); ?>"<?php echo $locked('telegram_chat_id') ? ' disabled placeholder="در wp-config.php تعریف شده"' : ''; ?>>

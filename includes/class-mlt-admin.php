@@ -58,6 +58,9 @@ class MLT_Admin
         // Version by file mtime so browser/LiteSpeed/Cloudflare caches refetch the CSS after every deploy.
         $ver = filemtime(MLT_PLUGIN_DIR . 'assets/admin.css') ?: MLT_VERSION;
         wp_enqueue_style('mlt-admin', plugins_url('assets/admin.css', MLT_PLUGIN_FILE), [], $ver);
+        if ($page === self::SLUG) { // only the board has the "send to Telegram" forms
+            wp_enqueue_script('mlt-admin', plugins_url('assets/admin.js', MLT_PLUGIN_FILE), [], filemtime(MLT_PLUGIN_DIR . 'assets/admin.js') ?: MLT_VERSION, true);
+        }
     }
 
     public static function render_board()
@@ -156,7 +159,8 @@ class MLT_Admin
                                             <input type="hidden" name="action" value="mlt_set_status">
                                             <input type="hidden" name="id" value="<?php echo $tid; ?>">
                                             <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce('mlt_set_status_' . $tid)); ?>">
-                                            <?php self::select('status', null, $t['status'], 'onchange="this.form.submit()" aria-label="تغییر وضعیت"'); ?>
+                                            <?php self::select('status', null, $t['status'], 'onchange="if(!this.form.elements.notify.checked)this.form.submit()" aria-label="تغییر وضعیت"'); ?>
+                                            <?php self::notify_block('s' . $tid, 'status', ['title' => $t['title'], 'owner' => self::label('owner', $t['owner']), 'status' => self::label('status', $t['status']), 'link' => MLT_Telegram::task_link($tid)], true); ?>
                                         </form>
                                         <form method="post" action="<?php echo $post_url; ?>" class="mlt-del" onsubmit="return confirm('این تسک و کامنت‌هایش برای همیشه حذف می‌شود. مطمئنی؟');">
                                             <input type="hidden" name="action" value="mlt_delete_task">
@@ -184,6 +188,7 @@ class MLT_Admin
                                         </div>
                                     </form>
                                     <div class="mlt-comments">
+                                        <p class="mlt-tz">زمان‌ها به وقت <code dir="ltr"><?php echo esc_html(MLT_Time::ZONE); ?></code></p>
                                         <?php foreach ($list as $c) : $author = get_userdata((int) $c['author']); ?>
                                             <div class="mlt-comment<?php echo (int) $c['flagged'] ? ' mlt-comment--flagged' : ''; ?>">
                                                 <div class="mlt-c-head">
@@ -191,7 +196,7 @@ class MLT_Admin
                                                     <?php if ($c['agent'] !== null && $c['agent'] !== '') : ?>
                                                         <span class="mlt-tag"><?php echo esc_html($c['agent']); ?></span>
                                                     <?php endif; ?>
-                                                    <time><?php echo esc_html(wp_date('Y/m/d H:i', strtotime($c['created_at'] . ' UTC'))); ?></time>
+                                                    <time><?php echo esc_html(MLT_Time::format($c['created_at'])); ?></time>
                                                     <?php if ((int) $c['flagged']) : ?>
                                                         <span class="mlt-flagged">پرچم‌دار</span>
                                                     <?php else : ?>
@@ -215,6 +220,7 @@ class MLT_Admin
                                             <input type="hidden" name="id" value="<?php echo $tid; ?>">
                                             <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce('mlt_add_comment_' . $tid)); ?>">
                                             <textarea name="body" rows="2" required maxlength="10000" placeholder="کامنت جدید (فقط متن)"></textarea>
+                                            <?php self::notify_block('c' . $tid, 'comment', ['title' => $t['title'], 'owner' => self::label('owner', $t['owner']), 'status' => self::label('status', $t['status']), 'link' => MLT_Telegram::task_link($tid)]); ?>
                                             <button type="submit" class="mlt-btn">ثبت کامنت</button>
                                         </form>
                                     </div>
@@ -361,6 +367,9 @@ class MLT_Admin
                 <label class="mlt-field">اولویت <?php self::select('priority', null, 'med'); ?></label>
                 <label class="mlt-field">دسته <?php self::select('bucket', null, 'normal'); ?></label>
                 <label class="mlt-field">وضعیت <?php self::select('status', null, 'open'); ?></label>
+                <div class="mlt-field--wide">
+                    <?php self::notify_block('add', 'task', ['link' => add_query_arg('page', self::SLUG, admin_url('admin.php'))]); ?>
+                </div>
                 <div class="mlt-field--wide"><button type="submit" class="mlt-btn">ذخیره</button></div>
             </form>
         </details>
@@ -374,7 +383,8 @@ class MLT_Admin
     {
         self::verify('mlt_add_task');
         self::call_and_redirect('POST', '/tasks', self::posted(['title', 'description', 'owner', 'priority', 'bucket', 'status']), function ($d) {
-            return ['تسک «' . $d['title'] . '» ساخته شد.', ['added' => $d['id']]];
+            list($suffix, $type) = self::notify_from_post($d['id']);
+            return ['تسک «' . $d['title'] . '» ساخته شد' . $suffix . '.', ['added' => $d['id']], $type];
         });
     }
 
@@ -394,15 +404,16 @@ class MLT_Admin
 
     public static function handle_set_status()
     {
-        self::patch('mlt_set_status', ['status'], 'وضعیت تغییر کرد.');
+        self::patch('mlt_set_status', ['status'], 'وضعیت تغییر کرد', true);
     }
 
-    private static function patch($action, array $fields, $ok_msg)
+    private static function patch($action, array $fields, $ok_msg, $may_notify = false)
     {
         $id = self::posted_id();
         self::verify($action . '_' . $id);
-        self::call_and_redirect('PATCH', '/tasks/' . $id, self::posted($fields), function () use ($ok_msg, $id) {
-            return [$ok_msg, ['edited' => $id]];
+        self::call_and_redirect('PATCH', '/tasks/' . $id, self::posted($fields), function () use ($ok_msg, $id, $may_notify) {
+            list($suffix, $type) = $may_notify ? self::notify_from_post($id) : ['', 'ok'];
+            return [$ok_msg . $suffix . '.', ['edited' => $id], $type];
         });
     }
 
@@ -410,8 +421,9 @@ class MLT_Admin
     {
         $id = self::posted_id();
         self::verify('mlt_add_comment_' . $id);
-        self::call_and_redirect('POST', '/tasks/' . $id . '/comments', self::posted(['body']), function () {
-            return ['کامنت ثبت شد.', []];
+        self::call_and_redirect('POST', '/tasks/' . $id . '/comments', self::posted(['body']), function () use ($id) {
+            list($suffix, $type) = self::notify_from_post($id);
+            return ['کامنت ثبت شد' . $suffix . '.', [], $type];
         }, ['comments' => $id]);
     }
 
@@ -459,6 +471,53 @@ class MLT_Admin
         }
     }
 
+    /**
+     * If the form's "send to Telegram" box was ticked, sends the text from the form (and only that) through
+     * POST /tasks/{id}/notify, after the change itself has been saved. Returns [text to append to the notice, notice type].
+     */
+    private static function notify_from_post($task_id)
+    {
+        if (empty($_POST['notify'])) {
+            return ['', 'ok'];
+        }
+        $request = new WP_REST_Request('POST', '/' . MLT_REST::NS . '/tasks/' . (int) $task_id . '/notify');
+        $request->set_body_params(['text' => isset($_POST['notify_text']) && is_string($_POST['notify_text']) ? wp_unslash($_POST['notify_text']) : '']);
+        $response = rest_do_request($request);
+        if ($response->is_error()) {
+            $data = $response->get_data();
+            return [' — اما ' . rtrim((string) ($data['message'] ?? 'ارسال به تلگرام انجام نشد.'), '.'), 'warn'];
+        }
+        return [' و به تلگرام ارسال شد', 'ok'];
+    }
+
+    /**
+     * Checkbox "📣 ارسال به تلگرام" (off by default) with the text field it reveals. assets/admin.js pre-fills the text
+     * (title, owner, status, sender, link) and keeps it in step with the form until the sender edits it.
+     * $inline: lay the pieces out directly in the card's action row.
+     */
+    private static function notify_block($key, $event, array $data, $inline = false)
+    {
+        $data += ['title' => '', 'owner' => '', 'status' => '', 'sender' => wp_get_current_user()->display_name];
+        $attrs = '';
+        foreach (['event' => $event] + $data as $name => $value) {
+            $attrs .= ' data-' . $name . '="' . esc_attr($value) . '"';
+        }
+        $id = 'mlt-n-' . $key;
+        ?>
+        <div class="mlt-notify<?php echo $inline ? ' mlt-notify--inline' : ''; ?>"<?php echo $attrs; ?>>
+            <input type="checkbox" name="notify" value="1" id="<?php echo esc_attr($id); ?>" class="mlt-notify-toggle">
+            <label for="<?php echo esc_attr($id); ?>" class="mlt-notify-label">📣 ارسال به تلگرام</label>
+            <div class="mlt-notify-body">
+                <textarea name="notify_text" rows="6" maxlength="4096" dir="auto" aria-label="متن پیام تلگرام"></textarea>
+                <p class="mlt-hint">فقط همین متن ارسال می‌شود؛ می‌توانی ویرایشش کنی.</p>
+                <?php if ($inline) : ?>
+                    <button type="submit" class="mlt-btn">ذخیره و ارسال</button>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
+    }
+
     /** $on_ok($data) returns [success message, extra redirect args]; $always is added to the redirect either way. */
     private static function call_and_redirect($method, $route, array $body, callable $on_ok, array $always = [], $page = self::SLUG, $anchor = '')
     {
@@ -471,8 +530,8 @@ class MLT_Admin
         if ($response->is_error()) {
             $notice = ['type' => 'error', 'msg' => 'انجام نشد: ' . ($data['message'] ?? '')];
         } else {
-            list($msg, $extra) = $on_ok($data);
-            $notice = ['type' => 'ok', 'msg' => $msg];
+            list($msg, $extra, $type) = array_pad($on_ok($data), 3, 'ok'); // 'warn': saved, but the Telegram step did not work
+            $notice = ['type' => $type, 'msg' => $msg];
             $args += $extra;
         }
         self::redirect_with($notice, $page, $args, $anchor);
@@ -500,7 +559,7 @@ class MLT_Admin
         foreach (MLT_Routines::views() as $v) {
             $groups[$v['frequency']]['items'][] = $v;
         }
-        $now = MLT_Routines::now();
+        $now = MLT_Time::now();
         ?>
         <div class="mlt" dir="rtl">
             <header class="mlt-head">
@@ -508,7 +567,7 @@ class MLT_Admin
             </header>
             <?php self::render_notice(); ?>
             <p class="mlt-hint">
-                منطقه‌ی زمانی روتین‌ها: <code dir="ltr"><?php echo esc_html(MLT_Routines::TIMEZONE); ?></code>
+                منطقه‌ی زمانی روتین‌ها: <code dir="ltr"><?php echo esc_html(MLT_Time::ZONE); ?></code>
                 (<code dir="ltr">UTC<?php echo esc_html($now->format('P')); ?></code>)، اکنون <code dir="ltr"><?php echo esc_html($now->format('Y-m-d H:i')); ?></code>.
                 با عوض‌شدن روز، هفته یا ماه به این وقت، وضعیت روتین‌ها خودکار از نو شروع می‌شود. منطقه‌ی زمانی سایت تغییری نمی‌کند.
             </p>

@@ -57,6 +57,12 @@ class MLT_REST
             ['POST', 'flag_comment'],
         ]);
 
+        self::route("/tasks/$id/notify", [
+            ['POST', 'notify_task', ['text' => ['type' => 'string']]],
+        ]);
+        self::route('/notify', [
+            ['POST', 'notify_free', ['text' => ['type' => 'string', 'required' => true]]],
+        ]);
         self::route('/routines', [
             ['GET', 'get_routines', ['period' => ['type' => 'string', 'enum' => array_keys(MLT_Routines::FREQS)]]],
         ]);
@@ -323,6 +329,39 @@ class MLT_REST
         return $row;
     }
 
+    // ---- telegram (manual only) ----
+
+    /** Sends `text` (or, if it is not given, title/owner/status/sender/link) to the configured Telegram chat. */
+    public static function notify_task(WP_REST_Request $request)
+    {
+        $task = self::find_task((int) $request['id']);
+        if (!$task) {
+            return self::not_found();
+        }
+        $text = $request->has_param('text') ? $request['text'] : MLT_Telegram::default_text($task, '📣 اطلاع‌رسانی تسک');
+        return self::notify_result(MLT_Telegram::deliver($text, (int) $task['id']));
+    }
+
+    /** A manual message that belongs to no task. */
+    public static function notify_free(WP_REST_Request $request)
+    {
+        return self::notify_result(MLT_Telegram::deliver($request['text'], null));
+    }
+
+    private static function notify_result($result)
+    {
+        if ($result === true) {
+            return ['sent' => true];
+        }
+        if ($result->get_error_code() === 'mlt_rate_limited') {
+            $wait = (int) $result->get_error_data()['retry_after'];
+            $response = new WP_REST_Response(['code' => 'mlt_rate_limited', 'message' => $result->get_error_message(), 'data' => ['status' => 429, 'retry_after' => $wait]], 429);
+            $response->header('Retry-After', (string) $wait);
+            return $response;
+        }
+        return $result;
+    }
+
     // ---- routines ----
 
     public static function get_routines(WP_REST_Request $request)
@@ -430,7 +469,7 @@ class MLT_REST
     }
 
     /** Name of the Application Password used for this request (e.g. "Claude-mh"); null for cookie auth. */
-    private static function current_agent()
+    public static function current_agent()
     {
         $uuid = rest_get_authenticated_app_password();
         if (!$uuid) {

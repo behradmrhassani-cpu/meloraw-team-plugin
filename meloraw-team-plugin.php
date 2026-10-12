@@ -20,9 +20,11 @@ define('MLT_CAP', 'manage_meloraw_tasks');
 
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-install.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-rest.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-time.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-log.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-reports.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-settings.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-telegram.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-routines.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-importer.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-admin.php';

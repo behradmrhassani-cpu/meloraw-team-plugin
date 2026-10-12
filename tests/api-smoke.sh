@@ -4,7 +4,7 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|all]
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|hidden|all]
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
@@ -183,10 +183,31 @@ run_hidden() {
   expect_persian "پیام مسیر ناموجود فارسی است"
 }
 
+# اعلان تلگرام: فقط حالت‌هایی که هیچ‌وقت پیام واقعی نمی‌فرستند (بدون توکن، بدون دسترسی، ورودی نامعتبر، تسک ناموجود).
+# ارسال موفق را اینجا نمی‌زنیم؛ آن با درخواست HTTP ساختگی روی سایت تست بررسی می‌شود.
+run_notify() {
+  echo "== اعلان تلگرام (بدون ارسال واقعی)"
+  req POST /notify '{"text":"x"}' -;               expect_code 401 "notify بدون توکن"
+  req POST /tasks/1/notify '{"text":"x"}' -;       expect_code 401 "notify تسک بدون توکن"
+  req POST /notify '{}';                           expect_code 400 "notify بدون متن"
+  expect_jq '.code' 'mlt_missing_param' "کد خطای متن الزامی"
+  expect_persian "پیام نبودن متن فارسی است"
+  req POST /notify '{"text":"   "}';               expect_code 400 "notify با متن خالی"
+  expect_persian "پیام متن خالی فارسی است"
+  req POST /notify "{\"text\":\"$(head -c 4100 /dev/zero | tr '\0' 'a')\"}"; expect_code 400 "notify با متن خیلی بلند"
+  expect_persian "پیام متن بلند فارسی است"
+  req POST /tasks/999999999/notify '{"text":"x"}'; expect_code 404 "notify تسک ناموجود"
+  expect_persian "پیام تسک ناموجود فارسی است"
+  if [ -n "${MLT_AUTH_NOCAP:-}" ]; then
+    req POST /notify '{"text":"x"}' "$MLT_AUTH_NOCAP";         expect_code 403 "notify بدون نقش ادمین"
+    req POST /tasks/1/notify '{"text":"x"}' "$MLT_AUTH_NOCAP"; expect_code 403 "notify تسک بدون نقش ادمین"
+  fi
+}
+
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; hidden) run_hidden ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

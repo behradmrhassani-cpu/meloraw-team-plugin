@@ -173,3 +173,21 @@
 .mlt-settings .mlt-field input[type=text], .mlt .mlt-settings input[type=password] { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 14px; width: 100%; max-width: none; box-shadow: none; }
 .mlt .mlt-settings input:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }
 .mlt .mlt-settings input[disabled] { opacity: .55; }
+.mlt-tz { margin: 0 0 8px; color: var(--dim); font-size: 12px; }
+.mlt .mlt-tz code { background: var(--raised); color: var(--cyan); padding: 0 6px; border-radius: 4px; }
+
+/* ارسال دستی به تلگرام */
+.mlt-notice--warn { color: var(--gold); border-color: var(--gold); }
+.mlt-notify { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; width: 100%; }
+.mlt-notify-toggle { margin: 0; }
+.mlt-notify-label { color: var(--dim); font-size: 13px; cursor: pointer; }
+.mlt-notify-toggle:checked + .mlt-notify-label { color: var(--gold); }
+.mlt-notify-body { display: none; flex: 0 0 100%; }
+.mlt-notify-toggle:checked ~ .mlt-notify-body { display: block; }
+.mlt .mlt-notify textarea { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 13px; line-height: 1.8; box-shadow: none; }
+.mlt .mlt-notify textarea:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }
+.mlt-notify-body .mlt-hint { margin: 4px 0 8px; font-size: 12px; }
+/* در ردیف دکمه‌های کارت: فرم وضعیت و بلوک تلگرام مستقیم در همان ردیف چیده می‌شوند */
+.mlt-actions .mlt-status, .mlt-actions .mlt-notify--inline { display: contents; }
+.mlt-actions .mlt-notify--inline .mlt-notify-body { flex-basis: 100%; }
+.mlt-actions .mlt-notify--inline .mlt-notify-toggle:checked ~ .mlt-notify-body { display: block; width: 100%; }
