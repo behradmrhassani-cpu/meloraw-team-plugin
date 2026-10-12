@@ -16,5 +16,11 @@ if (!defined('ABSPATH')) {
 define('MLT_VERSION', '0.1.0');
 define('MLT_PLUGIN_FILE', __FILE__);
 define('MLT_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('MLT_CAP', 'manage_meloraw_tasks');
 
-// TODO: include classes from includes/ as they are built (DB, REST, admin, telegram).
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-install.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-rest.php';
+
+register_activation_hook(__FILE__, ['MLT_Install', 'activate']);
+add_action('plugins_loaded', ['MLT_Install', 'maybe_upgrade']);
+add_action('rest_api_init', ['MLT_REST', 'register_routes']);
