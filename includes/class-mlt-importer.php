@@ -90,9 +90,12 @@ class MLT_Importer
                 continue;
             }
             $existing[$row['legacy_id']] = true;
-            if (!$dry && !$wpdb->insert("{$wpdb->prefix}mlt_tasks", $row)) {
-                self::reject($report, $section, $item, $index, 'ذخیره در دیتابیس انجام نشد');
-                continue;
+            if (!$dry) {
+                if (!$wpdb->insert("{$wpdb->prefix}mlt_tasks", $row)) {
+                    self::reject($report, $section, $item, $index, 'ذخیره در دیتابیس انجام نشد');
+                    continue;
+                }
+                MLT_Taskmeta::after_insert($wpdb->insert_id, $row['owner'], $row['owner']); // old data: the code prefix follows the owner
             }
             $report['sections'][$section]['created']++;
         }

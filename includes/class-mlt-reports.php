@@ -64,6 +64,7 @@ class MLT_Reports
             return new WP_Error('mlt_db_error', 'ذخیره انجام نشد.', ['status' => 500]);
         }
         $new_id = $wpdb->insert_id;
+        MLT_Taskmeta::after_insert($new_id, $c['task_owner'], MLT_Identity::current() ?? 'auto'); // no estimate yet: it shows as incomplete
         // no title here: it is the first line of the comment, and comment text must not reach the log
         MLT_REST::log_activity($new_id, 'comment_convert', sprintf('تسک #%d از کامنت #%d روی «%s»', $new_id, $cid, $c['task_title']));
         return ['id' => $new_id, 'title' => $title];

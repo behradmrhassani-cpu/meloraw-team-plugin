@@ -4,7 +4,7 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
@@ -41,7 +41,10 @@ expect_jq()   { [ "$(echo "$BODY" | jq -r "$1")" = "$2" ] && ok "$3" || bad "$3:
 
 # new_task JSON → sets NEW_ID (no subshell, so CREATED is kept for cleanup)
 new_task() {
-  req POST /tasks "$1"
+  # زمان تقریبی از ساخت تسک اجباری است؛ اگر نیامده بود ۳۰ دقیقه می‌گذاریم
+  local json=$1
+  echo "$json" | jq -e 'has("estimate_minutes")' >/dev/null 2>&1 || json=$(echo "$json" | jq -c '. + {estimate_minutes: 30}')
+  req POST /tasks "$json"
   NEW_ID=$(echo "$BODY" | jq -r '.id // empty')
   [ -n "$NEW_ID" ] && CREATED+=("$NEW_ID")
 }
@@ -71,7 +74,7 @@ run_auth() {
 run_tasks() {
   echo "== CRUD تسک"
   local id
-  req POST /tasks '{"title":"تست <b>API</b>","description":"خط اول\nخط دوم","owner":"maral","bucket":"boost","priority":"high"}'
+  req POST /tasks '{"title":"تست <b>API</b>","description":"خط اول\nخط دوم","owner":"maral","bucket":"boost","priority":"high","estimate_minutes":30}'
   expect_code 201 "ساخت تسک با رمز"
   id=$(echo "$BODY" | jq -r '.id'); CREATED+=("$id")
   expect_jq '.title' 'تست API' "تگ HTML از عنوان حذف شد"
@@ -210,6 +213,79 @@ run_notify() {
   fi
 }
 
+# کد خوانا، چند مسئول، فیلدهای قالب واحد (تخمین، سررسید، معیار انجام)
+run_fields() {
+  echo "== کد تسک، مسئول‌ها و فیلدهای قالب"
+  local id code i
+  req GET /me "" -;                                expect_code 401 "me بدون توکن"
+  req GET /me;                                     expect_code 200 "me با ادمین"
+  expect_jq 'has("identity") and has("prefix")' 'true' "me هویت را برمی‌گرداند"
+  local identity; identity=$(echo "$BODY" | jq -r '.identity // empty')
+
+  req POST /tasks '{"title":"بدون تخمین"}';        expect_code 400 "ساخت بدون زمان تقریبی"
+  expect_persian "پیام نبودن تخمین فارسی است"
+  req POST /tasks '{"title":"x","estimate_minutes":4}'; expect_code 400 "تخمین کمتر از ۵"
+  req POST /tasks '{"title":"x","estimate_minutes":"abc"}'; expect_code 400 "تخمین غیرعددی"
+  req POST /tasks '{"title":"x","estimate_minutes":5,"due_date":"2026-13-40"}'; expect_code 400 "سررسید نامعتبر"
+  req POST /tasks '{"title":"x","estimate_minutes":5,"assignees":["hacker"]}'; expect_code 400 "مسئول نامعتبر در assignees"
+
+  new_task '{"title":"قالب یک","owner":"maral","estimate_minutes":45,"due_date":"2031-01-02","done_criteria":"معیار تست"}'; id=$NEW_ID
+  expect_code 201 "ساخت با همه‌ی فیلدها"
+  code=$(echo "$BODY" | jq -r '.code')
+  echo "$code" | grep -qE '^[A-Z]{2}-[0-9]+$' && ok "کد خوانا: $code" || bad "کد نامعتبر: $code"
+  expect_jq '[.estimate_minutes,.estimate_original]|join(",")' '45,45' "estimate_original = estimate_minutes"
+  expect_jq '.assignees|join(",")' 'maral' "فقط owner مسئول است"
+  expect_jq '[.incomplete,.late]|join(",")' 'false,false' "ناقص/دیرشده نیست"
+  req GET "/tasks/$code";                          expect_jq '.id' "$id" "گرفتن با کد"
+  req GET "/tasks/$(echo "$code" | tr A-Z a-z)";   expect_jq '.id' "$id" "کد بدون حساسیت به حروف"
+  req GET /tasks/ZZ-99999999;                      expect_code 404 "کد ناموجود"
+  req PATCH "/tasks/$code" '{"owner":"chakra"}';   expect_jq '.code' "$code" "کد با عوض‌شدن مسئول عوض نمی‌شود"
+  expect_jq '.assignees|join(",")' 'maral,chakra' "مسئول جدید اضافه شد، قبلی می‌ماند"
+  req PATCH "/tasks/$id" '{"assignees":["you"]}';  expect_jq '.assignees|join(",")' 'you,chakra' "ویرایش مسئول‌ها (owner همیشه هست)"
+  req GET "/tasks?assignee=you"
+  [ "$(echo "$BODY" | jq "[.[]|select(.id==$id)]|length")" = 1 ] && ok "در نمای مسئول فقط یک‌بار دیده می‌شود" || bad "تکراری یا گم‌شده در نمای مسئول"
+  req GET "/tasks?assignee=maral"
+  [ "$(echo "$BODY" | jq "[.[]|select(.id==$id)]|length")" = 0 ] && ok "مسئول حذف‌شده دیگر نمی‌بیند" || bad "هنوز در نمای مسئول حذف‌شده است"
+  req GET "/tasks?owner=chakra"
+  [ "$(echo "$BODY" | jq "[.[]|select(.id==$id)]|length")" = 1 ] && ok "فیلتر قدیمی owner سازگار است" || bad "فیلتر owner خراب شد"
+
+  req PATCH "/tasks/$id" '{"estimate_minutes":90}'; expect_code 400 "تخمین ثبت‌شده با PATCH عوض نمی‌شود"
+  req PATCH "/tasks/$id" '{"due_date":"2031-02-03"}'; expect_jq '.due_date' '2031-02-03' "ویرایش سررسید"
+  req PATCH "/tasks/$id" '{"due_date":null}';       expect_jq '.due_date' 'null' "پاک‌کردن سررسید"
+  req PATCH "/tasks/$id" "{\"done_criteria\":\"$(head -c 2001 /dev/zero | tr '\0' 'a')\"}"; expect_code 400 "معیار بیش از ۲۰۰۰ نویسه"
+  req PATCH "/tasks/$id" "{\"done_criteria\":\"$(head -c 2000 /dev/zero | tr '\0' 'a')\"}"; expect_code 200 "معیار دقیقاً ۲۰۰۰ نویسه"
+
+  # کدها یکتا و پشت‌سرهم، حتی وقتی چند درخواست همزمان تسک می‌سازند
+  local before; req GET /tasks; before=$(echo "$BODY" | jq length)
+  seq 1 12 | xargs -P 6 -I{} curl -s -u "$MLT_AUTH" -H 'Content-Type: application/json' -X POST -d '{"title":"همزمان {}","estimate_minutes":5,"owner":"auto"}' "$MLT_BASE/tasks" > /tmp/mlt_par.$$
+  local ids; ids=$(jq -r '.id' /tmp/mlt_par.$$); for i in $ids; do CREATED+=("$i"); done
+  [ "$(jq -r '.code' /tmp/mlt_par.$$ | sort -u | wc -l)" = 12 ] && ok "۱۲ ساخت همزمان: ۱۲ کد یکتا" || bad "کد تکراری در ساخت همزمان"
+  jq -r '.code' /tmp/mlt_par.$$ | sed 's/.*-//' | sort -n | awk 'NR>1 && $1!=p+1{gap=1} {p=$1} END{exit gap}' && ok "شماره‌ها پشت‌سرهم‌اند (بدون سوراخ)" || bad "سوراخ در شماره‌ی کدها"
+  rm -f /tmp/mlt_par.$$
+
+  # تسک ناقص: با import ساخته می‌شود (تخمین ندارد) و با PATCH پر می‌شود
+  local key="smokeinc_$$"
+  req POST /import "{\"format\":\"meloraw-tasks-export\",\"version\":1,\"tasks\":[{\"id\":1,\"legacy_id\":\"$key\",\"title\":\"ناقص $key\",\"owner\":\"you\"}]}"
+  expect_jq '.tasks.created' '1' "تسک بدون تخمین وارد شد"
+  req GET "/tasks?incomplete=true"
+  id=$(echo "$BODY" | jq -r --arg k "ناقص $key" '.[]|select(.title==$k)|.id'); CREATED+=("$id")
+  [ -n "$id" ] && ok "در فیلتر ناقص دیده می‌شود" || bad "در فیلتر ناقص نیست"
+  expect_jq 'all(.[]; .estimate_minutes == null)' 'true' "فیلتر ناقص فقط تسک‌های بدون تخمین را برمی‌گرداند"
+  req GET "/tasks/$id";                            expect_jq '[.incomplete,.code!=null]|join(",")' 'true,true' "ناقص است ولی کد دارد"
+  req PATCH "/tasks/$id" '{"estimate_minutes":20}'; expect_jq '[.estimate_minutes,.estimate_original,.incomplete]|join(",")' '20,20,false' "پرکردن تخمین با PATCH"
+
+  if [ -n "$identity" ]; then
+    req GET "/tasks?mine=true"
+    expect_jq "all(.[]; .assignees | index(\"$identity\") != null)" 'true' "mine فقط تسک‌های هویت $identity را می‌دهد"
+    new_task '{"title":"mine-test","owner":"'$identity'"}'
+    expect_jq ".code | startswith(\"$(echo "$BODY" | jq -r .code | cut -c1-2)\")" 'true' "پیشوند کد از سازنده"
+  else
+    echo "  (حساب این رمز در تنظیمات به هیچ عضوی وصل نیست؛ تست mine رد شد)"
+    req GET "/tasks?mine=true";                    expect_code 409 "mine بدون هویت: پیام ساده"
+    expect_persian "پیام بدون هویت فارسی است"
+  fi
+}
+
 # هدرهای امنیتی/کش روی همه‌ی پاسخ‌های REST افزونه (موفق، خطا، بدون توکن)
 expect_hdr() { echo "$HDRS" | grep -qiE "^$1: .*$2" && ok "$3" || bad "$3 (هدر $1 نیست)"; }
 run_headers() {
@@ -308,8 +384,8 @@ run_ratelimit() {
 
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_headers; run_scope; run_export; run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_headers; run_scope; run_export; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

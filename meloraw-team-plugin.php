@@ -19,6 +19,8 @@ define('MLT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('MLT_CAP', 'manage_meloraw_tasks');
 
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-install.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-identity.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-taskmeta.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-rest.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-ratelimit.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-agents.php';

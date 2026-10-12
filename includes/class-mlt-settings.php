@@ -27,6 +27,18 @@ class MLT_Settings
         return defined(self::FIELDS[$field]) ? (string) constant(self::FIELDS[$field]) : (string) (self::stored()[$field] ?? '');
     }
 
+    /** WordPress accounts that can use the plugin (Administrators). */
+    public static function team_accounts()
+    {
+        return get_users(['role' => 'administrator', 'orderby' => 'ID', 'order' => 'ASC']);
+    }
+
+    /** One key of the saved settings (non-secret ones: identity map, hours, announcement). */
+    public static function option($key)
+    {
+        return self::stored()[$key] ?? null;
+    }
+
     private static function stored()
     {
         $value = get_option(self::OPTION, []);
@@ -86,6 +98,21 @@ class MLT_Settings
             }
         }
 
+        // who is who: WordPress account -> you / maral / chakra / auto
+        $map = [];
+        $posted = isset($_POST['identity']) && is_array($_POST['identity']) ? wp_unslash($_POST['identity']) : [];
+        foreach (self::team_accounts() as $account) {
+            $slug = isset($posted[$account->ID]) && is_string($posted[$account->ID]) ? sanitize_key($posted[$account->ID]) : '';
+            if (in_array($slug, MLT_Identity::slugs(), true)) {
+                $map[$account->ID] = $slug;
+            }
+        }
+        if ($map) {
+            $new['identity_map'] = $map;
+        } else {
+            unset($new['identity_map']);
+        }
+
         if (!empty($_POST[self::DELETE_FLAG])) {
             $new[self::DELETE_FLAG] = '1';
         } else {
@@ -95,7 +122,7 @@ class MLT_Settings
         if ($errors) {
             MLT_Admin::redirect_with(['type' => 'error', 'msg' => 'ذخیره نشد: ' . implode(' ', $errors)], MLT_Admin::SETTINGS_SLUG, [], '');
         }
-        $changed = array_values(array_filter(array_merge(array_keys(self::FIELDS), [self::DELETE_FLAG]), function ($f) use ($old, $new) {
+        $changed = array_values(array_filter(array_merge(array_keys(self::FIELDS), [self::DELETE_FLAG, 'identity_map']), function ($f) use ($old, $new) {
             return ($old[$f] ?? null) !== ($new[$f] ?? null);
         }));
         if ($changed) {
@@ -142,6 +169,24 @@ class MLT_Settings
                 <?php if (!$locked('telegram_bot_token') && !empty($s['telegram_bot_token'])) : ?>
                     <label class="mlt-check"><input type="checkbox" name="clear_token" value="1"> توکن ذخیره‌شده پاک شود</label>
                 <?php endif; ?>
+                <h2 class="mlt-sub">هویت اعضا</h2>
+                <p class="mlt-hint">هر حساب وردپرس را به یکی از اعضای تیم وصل کن. برد پیش‌فرض تسک‌های همان نفر را نشان می‌دهد و کد تسک‌های تازه (MH، MA، CH، AU) از روی سازنده ساخته می‌شود. ایجنت‌ها با Application Password همان حساب، همان هویت را دارند. حسابی که وصل نشده باشد همه‌ی تسک‌ها را می‌بیند و پیام یادآوری می‌گیرد.</p>
+                <?php $identity_map = MLT_Identity::map(); ?>
+                <table class="mlt-idtable">
+                    <?php foreach (self::team_accounts() as $account) : ?>
+                        <tr>
+                            <th><?php echo esc_html($account->display_name); ?> <code dir="ltr"><?php echo esc_html($account->user_login); ?></code></th>
+                            <td>
+                                <select name="identity[<?php echo (int) $account->ID; ?>]" aria-label="هویت <?php echo esc_attr($account->user_login); ?>">
+                                    <option value="">— وصل نشده</option>
+                                    <?php foreach (MLT_Admin::LABELS['owner'] as $slug => $label) : ?>
+                                        <option value="<?php echo esc_attr($slug); ?>"<?php selected(($identity_map[$account->ID] ?? ''), $slug); ?>><?php echo esc_html($label . ' (' . MLT_Identity::prefix($slug) . ')'); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </table>
                 <h2 class="mlt-sub">حذف افزونه</h2>
                 <label class="mlt-check"><input type="checkbox" name="delete_on_uninstall" value="1"<?php checked(!empty($s[self::DELETE_FLAG])); ?>> هنگام حذف افزونه از وردپرس، همه‌ی داده‌ها (تسک‌ها، کامنت‌ها، لاگ و تنظیمات) برای همیشه پاک شود</label>
                 <p class="mlt-hint">پیش‌فرض خاموش است: با حذف افزونه هیچ داده‌ای پاک نمی‌شود. اگر روشنش کنی، «حذف» افزونه از صفحه‌ی افزونه‌های وردپرس بدون هیچ تأیید دیگری همه‌چیز را پاک می‌کند؛ قبلش از <code dir="ltr">GET /export</code> خروجی بگیر.</p>

@@ -98,12 +98,19 @@ class MLT_Routines
                     'priority'    => $def['priority'],
                     'bucket'      => $def['bucket'],
                     'status'      => $status,
+                    'estimate_minutes'  => $def['estimate_minutes'],
+                    'estimate_original' => $def['estimate_original'],
+                    'done_criteria'     => $def['done_criteria'],
+                    'recurrence_until'  => $def['recurrence_until'],
                     'created_by'  => $user,
                     'created_at'  => $now,
                     'updated_by'  => $user,
                     'updated_at'  => $now,
                 ]);
                 $row = $created ? ['id' => $wpdb->insert_id] : (self::rows([$period])[$key . '|' . $period] ?? null); // else: a concurrent request created it first
+                if ($created) {
+                    MLT_Taskmeta::after_insert($row['id'], $def['owner'], $def['owner']); // owner as assignee; routine rows get no code
+                }
                 if (!$row) {
                     return new WP_Error('mlt_db_error', 'ذخیره انجام نشد.', ['status' => 500]);
                 }
@@ -154,6 +161,10 @@ class MLT_Routines
                     'priority'    => $r['priority'],
                     'bucket'      => $r['bucket'],
                     'meta'        => $r['meta'],
+                    'estimate_minutes'  => $r['estimate_minutes'],
+                    'estimate_original' => $r['estimate_original'],
+                    'done_criteria'     => $r['done_criteria'],
+                    'recurrence_until'  => $r['recurrence_until'],
                 ];
             }
         }

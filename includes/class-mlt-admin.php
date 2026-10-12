@@ -396,10 +396,13 @@ class MLT_Admin
                 <label class="mlt-field mlt-field--wide">توضیح
                     <textarea name="description" rows="3"></textarea>
                 </label>
-                <label class="mlt-field">مسئول <?php self::select('owner', null, 'you'); ?></label>
+                <label class="mlt-field">مسئول <?php self::select('owner', null, MLT_Identity::current() ?? 'you'); ?></label>
                 <label class="mlt-field">اولویت <?php self::select('priority', null, 'med'); ?></label>
                 <label class="mlt-field">دسته <?php self::select('bucket', null, 'normal'); ?></label>
                 <label class="mlt-field">وضعیت <?php self::select('status', null, 'open'); ?></label>
+                <label class="mlt-field">زمان تقریبی (دقیقه، حداقل ۵)
+                    <input type="number" name="estimate_minutes" required min="<?php echo (int) MLT_Taskmeta::ESTIMATE_MIN; ?>" max="<?php echo (int) MLT_Taskmeta::ESTIMATE_MAX; ?>" step="1" value="30">
+                </label>
                 <div class="mlt-field--wide">
                     <?php self::notify_block('add', 'task', ['link' => add_query_arg('page', self::SLUG, admin_url('admin.php'))]); ?>
                 </div>
@@ -415,7 +418,7 @@ class MLT_Admin
     public static function handle_add_task()
     {
         self::verify('mlt_add_task');
-        self::call_and_redirect('POST', '/tasks', self::posted(['title', 'description', 'owner', 'priority', 'bucket', 'status']), function ($d) {
+        self::call_and_redirect('POST', '/tasks', self::posted(['title', 'description', 'owner', 'priority', 'bucket', 'status', 'estimate_minutes']), function ($d) {
             list($suffix, $type) = self::notify_from_post($d['id']);
             return ['تسک «' . $d['title'] . '» ساخته شد' . $suffix . '.', ['added' => $d['id']], $type];
         });

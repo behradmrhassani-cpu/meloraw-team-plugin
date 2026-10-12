@@ -38,6 +38,9 @@ class MLT_REST
         foreach (self::ENUMS as $field => $values) {
             $filters[$field] = ['type' => 'string', 'enum' => $values];
         }
+        $filters['assignee'] = ['type' => 'string', 'enum' => self::ENUMS['owner']];
+        $filters['mine'] = ['type' => 'boolean'];
+        $filters['incomplete'] = ['type' => 'boolean'];
 
         $write = [
             'title'       => ['type' => 'string'],
@@ -47,8 +50,13 @@ class MLT_REST
             $write[$field] = ['type' => 'string', 'enum' => self::ENUMS[$field]];
         }
         $write['kind'] = ['type' => 'string', 'enum' => self::WRITABLE_KINDS];
+        $write['estimate_minutes'] = ['type' => 'integer'];
+        $write['due_date'] = ['type' => ['string', 'null']];
+        $write['done_criteria'] = ['type' => ['string', 'null']];
+        $write['assignees'] = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => self::ENUMS['owner']]];
+        $write['late_reason'] = ['type' => 'string']; // optional, only read when the task is set to done
 
-        $id  = '(?P<id>\d+)';
+        $id  = '(?P<id>\d+|' . MLT_Taskmeta::CODE_PATTERN . ')'; // numeric id or code (MH-3)
         $cid = '(?P<cid>\d+)';
 
         self::route('/tasks', [
@@ -73,6 +81,9 @@ class MLT_REST
         ]);
         self::route('/notify', [
             ['POST', 'notify_free', ['text' => ['type' => 'string', 'required' => true]]],
+        ]);
+        self::route('/me', [
+            ['GET', 'get_me'],
         ]);
         self::route('/export', [
             ['GET', 'export_all'],
@@ -204,9 +215,29 @@ class MLT_REST
 
     // ---- tasks ----
 
+    /** Numeric id of the task named in the URL: "42" or a code such as "MH-3"; 0 if there is none. */
+    private static function task_id(WP_REST_Request $request)
+    {
+        return MLT_Taskmeta::resolve($request['id']);
+    }
+
+    public static function get_me()
+    {
+        $slug = MLT_Identity::current();
+        $user = wp_get_current_user();
+        return [
+            'user'     => $user->user_login,
+            'identity' => $slug,
+            'prefix'   => $slug ? MLT_Identity::prefix($slug) : null,
+            'agent'    => self::current_agent(),
+            'today'    => MLT_Time::today(),
+        ];
+    }
+
     public static function get_tasks(WP_REST_Request $request)
     {
         global $wpdb;
+        $p = $wpdb->prefix;
         $where = [];
         $params = [];
         foreach (array_keys(self::ENUMS) as $field) {
@@ -216,20 +247,38 @@ class MLT_REST
                 $params[] = $value;
             }
         }
+        $assignee = $request->get_param('assignee');
+        if ($request->get_param('mine')) {
+            $assignee = MLT_Identity::current();
+            if ($assignee === null) {
+                return new WP_Error('mlt_no_identity', 'حساب شما در تنظیمات افزونه به هیچ‌یک از اعضای تیم نگاشت نشده است؛ ادمین باید در «تنظیمات» نگاشتش کند.', ['status' => 409]);
+            }
+        }
+        if ($assignee !== null) {
+            $where[] = "id IN (SELECT task_id FROM {$p}mlt_task_assignees WHERE who = %s)";
+            $params[] = $assignee;
+        }
+        if ($request->get_param('incomplete')) {
+            $where[] = "estimate_minutes IS NULL AND kind IN ('phase','new','routine')";
+        }
 
-        $sql = "SELECT * FROM {$wpdb->prefix}mlt_tasks";
+        $sql = "SELECT * FROM {$p}mlt_tasks";
         if ($where) {
-            $sql = $wpdb->prepare($sql . ' WHERE ' . implode(' AND ', $where), $params);
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+            $sql = $params ? $wpdb->prepare($sql, $params) : $sql;
         }
         $rows = $wpdb->get_results($sql . ' ORDER BY id DESC', ARRAY_A);
 
-        return rest_ensure_response(array_map([__CLASS__, 'format_task'], $rows));
+        return rest_ensure_response(self::format_tasks($rows));
     }
 
     public static function get_task(WP_REST_Request $request)
     {
-        $row = self::find_task((int) $request['id']);
-        return $row ? self::format_task($row) : self::not_found();
+        $row = self::find_task(self::task_id($request));
+        if (!$row) {
+            return self::not_found();
+        }
+        return self::format_task($row);
     }
 
     public static function create_task(WP_REST_Request $request)
@@ -242,21 +291,31 @@ class MLT_REST
         if (!isset($data['title'])) {
             return self::bad_request('عنوان لازم است.');
         }
+        if (!isset($data['estimate_minutes'])) {
+            return self::bad_request('زمان تقریبی (estimate_minutes، حداقل ' . MLT_Taskmeta::ESTIMATE_MIN . ' دقیقه) لازم است.');
+        }
+        $assignees = $data['assignees'] ?? [];
+        unset($data['assignees'], $data['late_reason']);
+        $identity = MLT_Identity::current();
 
         $now = current_time('mysql', true);
         $user = get_current_user_id();
         $data += [
-            'description' => '',
-            'created_by'  => $user,
-            'created_at'  => $now,
-            'updated_by'  => $user,
-            'updated_at'  => $now,
+            'description'       => '',
+            'owner'             => $identity ?? 'you', // a mapped user's own tasks are theirs by default
+            'estimate_original' => $data['estimate_minutes'], // never changes afterwards; extensions are kept apart
+            'created_by'        => $user,
+            'created_at'        => $now,
+            'updated_by'        => $user,
+            'updated_at'        => $now,
         ];
         if (!$wpdb->insert("{$wpdb->prefix}mlt_tasks", $data)) {
             return self::db_error();
         }
         $id = $wpdb->insert_id;
-        self::log_activity($id, 'task_create', sprintf('«%s»', $data['title']));
+        MLT_Taskmeta::set_assignees($id, $assignees, $data['owner']);
+        $code = MLT_Taskmeta::assign_code($id, $identity ?? 'auto'); // prefix = who creates it, fixed for good
+        self::log_activity($id, 'task_create', sprintf('«%s» [%s]', $data['title'], $code));
 
         $response = rest_ensure_response(self::format_task(self::find_task($id)));
         $response->set_status(201);
@@ -266,7 +325,7 @@ class MLT_REST
     public static function update_task(WP_REST_Request $request)
     {
         global $wpdb;
-        $id = (int) $request['id'];
+        $id = self::task_id($request);
         $old = self::find_task($id);
         if (!$old) {
             return self::not_found();
@@ -278,7 +337,16 @@ class MLT_REST
         if (!$data) {
             return self::bad_request('هیچ فیلدی برای ویرایش نیست.');
         }
+        $assignees = $data['assignees'] ?? null;
+        $late_reason = $data['late_reason'] ?? null;
+        unset($data['assignees'], $data['late_reason']);
 
+        if (isset($data['estimate_minutes'])) {
+            if ($old['estimate_minutes'] !== null) {
+                return self::bad_request('زمان تقریبی بعد از ثبت ثابت است؛ برای افزایشش «درخواست تمدید» (POST /tasks/{id}/extend) با دلیل بزن.');
+            }
+            $data['estimate_original'] = $data['estimate_minutes']; // filling an incomplete task in
+        }
         $data['updated_by'] = get_current_user_id();
         $data['updated_at'] = current_time('mysql', true);
         if ($wpdb->update("{$wpdb->prefix}mlt_tasks", $data, ['id' => $id]) === false) {
@@ -286,12 +354,23 @@ class MLT_REST
         }
         $changed = [];
         foreach ($data as $field => $value) {
-            if (!in_array($field, ['status', 'updated_by', 'updated_at'], true) && (string) $value !== (string) $old[$field]) {
+            if (!in_array($field, ['status', 'updated_by', 'updated_at', 'estimate_original'], true) && (string) $value !== (string) $old[$field]) {
                 $changed[] = $field;
+            }
+        }
+        $owner = $data['owner'] ?? $old['owner'];
+        if ($assignees !== null || $owner !== $old['owner']) {
+            $keep = $assignees ?? MLT_Taskmeta::assignees_for([$id])[$id];
+            list($added, $removed) = MLT_Taskmeta::set_assignees($id, $keep, $owner);
+            if ($added || $removed) {
+                $changed[] = 'assignees:' . ($added ? ' +' . implode(',+', $added) : '') . ($removed ? ' -' . implode(',-', $removed) : '');
             }
         }
         if ($changed) {
             self::log_activity($id, 'task_edit', sprintf('«%s»: %s', $old['title'], implode(', ', $changed)));
+        }
+        if (isset($data['estimate_original']) && $old['estimate_minutes'] === null) {
+            self::log_activity($id, 'estimate_set', sprintf('«%s»: %d min', $old['title'], $data['estimate_minutes']));
         }
         if (isset($data['status']) && $data['status'] !== $old['status']) {
             self::log_activity($id, 'status_change', sprintf('«%s»: %s → %s', $old['title'], $old['status'], $data['status']));
@@ -302,14 +381,16 @@ class MLT_REST
     public static function delete_task(WP_REST_Request $request)
     {
         global $wpdb;
-        $id = (int) $request['id'];
+        $id = self::task_id($request);
         $task = self::find_task($id);
         if (!$task) {
             return self::not_found();
         }
-        $wpdb->delete("{$wpdb->prefix}mlt_comments", ['task_id' => $id]);
+        foreach (['mlt_comments', 'mlt_task_assignees'] as $table) {
+            $wpdb->delete($wpdb->prefix . $table, ['task_id' => $id]);
+        }
         $wpdb->delete("{$wpdb->prefix}mlt_tasks", ['id' => $id]);
-        self::log_activity($id, 'task_delete', sprintf('«%s»', $task['title']));
+        self::log_activity($id, 'task_delete', sprintf('«%s» [%s]', $task['title'], (string) $task['code']));
         return ['deleted' => true, 'id' => $id];
     }
 
@@ -340,6 +421,33 @@ class MLT_REST
                 $data[$field] = $request[$field];
             }
         }
+        if (array_key_exists('estimate_minutes', $params)) {
+            $estimate = MLT_Taskmeta::estimate($request['estimate_minutes']);
+            if ($estimate === false) {
+                return self::bad_request(sprintf('زمان تقریبی باید عدد صحیح بین %d و %d دقیقه باشد.', MLT_Taskmeta::ESTIMATE_MIN, MLT_Taskmeta::ESTIMATE_MAX));
+            }
+            $data['estimate_minutes'] = $estimate;
+        }
+        if (array_key_exists('due_date', $params)) {
+            $date = MLT_Taskmeta::date($request['due_date']);
+            if ($date === false) {
+                return self::bad_request('سررسید باید تاریخ میلادی به شکل YYYY-MM-DD باشد.');
+            }
+            $data['due_date'] = $date;
+        }
+        if (array_key_exists('done_criteria', $params)) {
+            $criteria = MLT_Taskmeta::criteria($request['done_criteria']);
+            if ($criteria === false) {
+                return self::bad_request('معیار انجام بیش از ' . MLT_Taskmeta::CRITERIA_MAX . ' نویسه است.');
+            }
+            $data['done_criteria'] = $criteria;
+        }
+        if (array_key_exists('assignees', $params)) {
+            $data['assignees'] = array_values(array_unique(array_map('strval', (array) $request['assignees'])));
+        }
+        if (array_key_exists('late_reason', $params)) {
+            $data['late_reason'] = trim(sanitize_text_field((string) $request['late_reason']));
+        }
         return $data;
     }
 
@@ -349,16 +457,28 @@ class MLT_REST
         return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}mlt_tasks WHERE id = %d", $id), ARRAY_A);
     }
 
-    public static function format_task(array $row)
+    /** Many tasks at once: the assignees come from one query. */
+    public static function format_tasks(array $rows)
+    {
+        $assignees = MLT_Taskmeta::assignees_for(array_map('intval', wp_list_pluck($rows, 'id')));
+        return array_map(function ($row) use ($assignees) {
+            return self::format_task($row, $assignees[(int) $row['id']]);
+        }, $rows);
+    }
+
+    public static function format_task(array $row, array $assignees = null)
     {
         foreach (['id', 'created_by', 'updated_by'] as $int) {
             $row[$int] = (int) $row[$int];
         }
-        if ($row['source_comment_id'] !== null) {
-            $row['source_comment_id'] = (int) $row['source_comment_id'];
+        foreach (['source_comment_id', 'estimate_minutes', 'estimate_original'] as $nullable_int) {
+            if ($row[$nullable_int] !== null) {
+                $row[$nullable_int] = (int) $row[$nullable_int];
+            }
         }
         $row['meta'] = $row['meta'] === null ? null : json_decode($row['meta'], true);
-        return $row;
+        $row['assignees'] = $assignees ?? MLT_Taskmeta::assignees_for([$row['id']])[$row['id']];
+        return $row + MLT_Taskmeta::flags($row);
     }
 
     // ---- telegram (manual only) ----
@@ -366,7 +486,7 @@ class MLT_REST
     /** Sends `text` (or, if it is not given, title/owner/status/sender/link) to the configured Telegram chat. */
     public static function notify_task(WP_REST_Request $request)
     {
-        $task = self::find_task((int) $request['id']);
+        $task = self::find_task(self::task_id($request));
         if (!$task) {
             return self::not_found();
         }
@@ -435,7 +555,7 @@ class MLT_REST
     public static function get_comments(WP_REST_Request $request)
     {
         global $wpdb;
-        $id = (int) $request['id'];
+        $id = self::task_id($request);
         if (!self::find_task($id)) {
             return self::not_found();
         }
@@ -449,7 +569,7 @@ class MLT_REST
     public static function create_comment(WP_REST_Request $request)
     {
         global $wpdb;
-        $id = (int) $request['id'];
+        $id = self::task_id($request);
         if (!self::find_task($id)) {
             return self::not_found();
         }
@@ -483,7 +603,7 @@ class MLT_REST
     public static function flag_comment(WP_REST_Request $request)
     {
         global $wpdb;
-        $id  = (int) $request['id'];
+        $id  = self::task_id($request);
         $cid = (int) $request['cid'];
         $comment = self::find_comment($id, $cid);
         if (!$comment) {

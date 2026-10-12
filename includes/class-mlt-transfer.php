@@ -47,9 +47,10 @@ class MLT_Transfer
             return $user ? $user->user_login : null;
         };
 
+        $assignees = MLT_Taskmeta::assignees_for(array_map('intval', wp_list_pluck($tasks, 'id')));
         $out = [];
         foreach ($tasks as $t) {
-            $t = MLT_REST::format_task($t);
+            $t = MLT_REST::format_task($t, $assignees[(int) $t['id']]);
             $t['created_by_login'] = $login($t['created_by']);
             $t['updated_by_login'] = $login($t['updated_by']);
             $out[] = $t;
@@ -146,10 +147,15 @@ class MLT_Transfer
         foreach ($new_tasks as $n => list($file_id, $row)) {
             $source = $row['source_comment_id'];
             $row['source_comment_id'] = null; // linked below, once the comments have new ids
+            $assignees = $row['assignees'];
+            unset($row['assignees']);
             if (!$wpdb->insert("{$p}mlt_tasks", $row)) {
                 return self::abort();
             }
-            $task_ids[$n] = [$wpdb->insert_id, $source];
+            $new_id = $wpdb->insert_id; // read before the next queries overwrite it
+            MLT_Taskmeta::set_assignees($new_id, $assignees, $row['owner']);
+            MLT_Taskmeta::assign_code($new_id, $row['owner']); // codes are never taken from a file: a new one follows the owner
+            $task_ids[$n] = [$new_id, $source];
         }
         $comment_ids = [];
         foreach ($new_comments as list($n, $file_id, $row)) {
@@ -244,11 +250,29 @@ class MLT_Transfer
         if ($source !== null && (!is_int($source) || $source < 1)) {
             return 'source_comment_id نامعتبر است';
         }
+        $estimate = array_key_exists('estimate_minutes', $r) && $r['estimate_minutes'] !== null ? MLT_Taskmeta::estimate($r['estimate_minutes']) : null;
+        $original = array_key_exists('estimate_original', $r) && $r['estimate_original'] !== null ? MLT_Taskmeta::estimate($r['estimate_original']) : $estimate;
+        $due = MLT_Taskmeta::date($r['due_date'] ?? null);
+        $until = MLT_Taskmeta::date($r['recurrence_until'] ?? null);
+        $criteria = MLT_Taskmeta::criteria($r['done_criteria'] ?? '');
+        if ($estimate === false || $original === false || $due === false || $until === false || $criteria === false) {
+            return 'یکی از فیلدهای estimate_minutes، estimate_original، due_date، recurrence_until یا done_criteria نامعتبر است';
+        }
+        $assignees = $r['assignees'] ?? [];
+        if (!is_array($assignees) || array_diff($assignees, MLT_Identity::slugs())) {
+            return 'assignees نامعتبر است';
+        }
 
         return $row + [
             'recurrence'        => $recurrence,
             'period_key'        => $period,
             'source_comment_id' => $source,
+            'estimate_minutes'  => $estimate,
+            'estimate_original' => $estimate === null ? null : $original,
+            'due_date'          => $due,
+            'recurrence_until'  => $until,
+            'done_criteria'     => $criteria,
+            'assignees'         => $assignees,
             'meta'              => $meta ? wp_json_encode($meta, JSON_UNESCAPED_UNICODE) : null,
             'created_by'        => $me,
             'created_at'        => $now,

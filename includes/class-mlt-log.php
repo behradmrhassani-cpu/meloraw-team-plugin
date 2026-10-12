@@ -23,6 +23,7 @@ class MLT_Log
         'routine_status'  => 'وضعیت روتین',
         'import'          => 'ایمپورت',
         'export'          => 'خروجی JSON',
+        'estimate_set'    => 'ثبت زمان تقریبی',
         'settings_update' => 'تنظیمات',
         'telegram_notify' => 'ارسال به تلگرام',
         'telegram_error'  => 'خطای تلگرام',
