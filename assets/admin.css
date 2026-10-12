@@ -26,6 +26,7 @@
 .mlt-head h1 { margin-inline-end: auto; }
 .mlt-count { color: var(--dim); font-weight: 400; font-size: 13px; }
 .mlt-empty, .mlt-hint { color: var(--dim); font-size: 13px; margin: 0; }
+.mlt-empty { margin-bottom: 12px; }
 .mlt-hint { line-height: 1.9; }
 .mlt-check { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 13px; }
 .mlt-sub { font-size: 17px; margin: 24px 0 8px; display: flex; align-items: center; gap: 10px; color: var(--gold); }
@@ -252,3 +253,5 @@
 .mlt-actions .mlt-status, .mlt-actions .mlt-notify--inline { display: contents; }
 .mlt-actions .mlt-notify--inline .mlt-notify-body { flex-basis: 100%; }
 .mlt-actions .mlt-notify--inline .mlt-notify-toggle:checked ~ .mlt-notify-body { display: block; width: 100%; }
+.mlt-bars svg { transform: scaleX(-1); } /* RTL: the bars grow from the right */
+.mlt-bars > span svg + svg { margin-top: 3px; }

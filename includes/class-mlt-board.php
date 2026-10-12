@@ -221,7 +221,7 @@ class MLT_Board
                             <input type="hidden" name="action" value="mlt_timer">
                             <input type="hidden" name="do" value="start">
                             <input type="hidden" name="id" value="<?php echo $tid; ?>">
-                            <input type="hidden" name="back" value="<?php echo esc_attr(MLT_Admin::SLUG); ?>">
+                            <input type="hidden" name="back" value="<?php echo esc_attr($ctx['back'] ?? MLT_Admin::SLUG); ?>">
                             <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce('mlt_timer')); ?>">
                             <button type="submit" class="mlt-btn mlt-btn--sm">▶ شروع</button>
                         </form>

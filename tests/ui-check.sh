@@ -4,7 +4,7 @@
 #   MLT_SITE=https://example.com \
 #   MLT_LOGIN1='user:password' MLT_LOGIN2='user2:password'   # دو ادمین (رمز ورود، نه Application Password)
 #   MLT_LOGIN_NOCAP='editor:password'                       # اختیاری
-#   tests/ui-check.sh [clock|banner|settings|board|routines|all]
+#   tests/ui-check.sh [clock|banner|settings|board|routines|today|time|all]
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند. فرم‌ها با همان nonce خودشان ارسال می‌شوند.
 
@@ -14,11 +14,11 @@ set -u
 : "${MLT_LOGIN2:?MLT_LOGIN2 را تنظیم کنید}"
 SECTION="${1:-all}"
 HERE=$(cd "$(dirname "$0")" && pwd)
-JAR1=$(mktemp); JAR2=$(mktemp); JAR3=$(mktemp)
+JAR1=$(mktemp); JAR2=$(mktemp); JAR3=$(mktemp); JAR4=
 FAIL=0
 ok()  { echo "  ✓ $1"; }
 bad() { echo "  ✗ $1"; FAIL=1; }
-trap 'rm -f "$JAR1" "$JAR2" "$JAR3" /tmp/mlt_ui.$$' EXIT
+trap 'rm -f "$JAR1" "$JAR2" "$JAR3" "$JAR4" /tmp/mlt_ui.$$' EXIT
 
 login() { # jar user:pass
   curl -s -c "$1" -b "wordpress_test_cookie=WP%20Cookie%20check" -o /dev/null -d "log=${2%%:*}" --data-urlencode "pwd=${2#*:}" -d "wp-submit=Log+In&testcookie=1" "$MLT_SITE/wp-login.php"
@@ -34,12 +34,12 @@ post_form() { # jar page-slug action-fields...  (finds the form on that page, su
 has() { grep -q "$2" <<<"$1"; }
 
 login "$JAR1" "$MLT_LOGIN1"; login "$JAR2" "$MLT_LOGIN2"
-[ -n "${MLT_LOGIN_NOCAP:-}" ] && login "$JAR3" "$MLT_LOGIN_NOCAP"
+JAR4=$(mktemp); [ -n "${MLT_LOGIN_NOCAP:-}" ] && login "$JAR4" "$MLT_LOGIN_NOCAP"
 
 run_clock() {
   echo "== نوار تاریخ و ساعت UTC"
   local slug html
-  for slug in meloraw-tasks meloraw-tasks-routines meloraw-tasks-ideas meloraw-tasks-reports meloraw-tasks-log meloraw-tasks-import meloraw-tasks-settings; do
+  for slug in meloraw-tasks meloraw-tasks-routines meloraw-tasks-ideas meloraw-tasks-reports meloraw-tasks-log meloraw-tasks-import meloraw-tasks-settings meloraw-tasks-today meloraw-tasks-time; do
     html=$(page "$JAR1" "$slug")
     if has "$html" 'class="mlt-topbar"'; then
       local d t; d=$(grep -o 'mlt-clock-date" dir="ltr">[^<]*' <<<"$html" | sed 's/.*>//'); t=$(grep -o 'mlt-clock-time" dir="ltr">[^<]*' <<<"$html" | sed 's/.*>//')
@@ -57,17 +57,17 @@ run_clock() {
 run_banner() {
   echo "== بنر «چرا زمان ثبت می‌کنیم؟»"
   local h
-  for slug in meloraw-tasks meloraw-tasks-routines; do
+  for slug in meloraw-tasks meloraw-tasks-routines meloraw-tasks-today; do
     h=$(page "$JAR1" "$slug"); has "$h" 'id="mlt-why"' && ok "$slug: بنر برای کاربر تازه دیده می‌شود" || bad "$slug: بنر نیست"
   done
-  for slug in meloraw-tasks-reports meloraw-tasks-log meloraw-tasks-ideas meloraw-tasks-settings; do
+  for slug in meloraw-tasks-reports meloraw-tasks-log meloraw-tasks-ideas meloraw-tasks-settings meloraw-tasks-time; do
     h=$(page "$JAR1" "$slug"); has "$h" 'id="mlt-why"' && bad "$slug: بنر نباید اینجا باشد" || true
   done
   ok "بنر روی صفحه‌های گزارش/لاگ/ایده/تنظیمات نیست"
   h=$(page "$JAR1" meloraw-tasks); has "$h" 'چرا زمان کارهامون رو ثبت می‌کنیم؟ این زمان‌سنج برای کنترل شما نیست' && ok "متن دقیق بنر" || bad "متن بنر"
   has "$h" 'چرا زمان ثبت می‌کنیم؟</button>' && ok "لینک «چرا زمان ثبت می‌کنیم؟» در سربرگ" || bad "لینک سربرگ نیست"
   local code; code=$(post_form "$JAR1" meloraw-tasks action=mlt_banner do=hide); [ "$code" = 302 ] && ok "بستن (×) → ۳۰۲" || bad "بستن: $code"
-  for slug in meloraw-tasks meloraw-tasks-routines; do
+  for slug in meloraw-tasks meloraw-tasks-routines meloraw-tasks-today; do
     has "$(page "$JAR1" "$slug")" 'id="mlt-why"' && bad "$slug: بعد از بستن دوباره آمد" || ok "$slug: بعد از بستن نمی‌آید (ذخیره برای کاربر)"
   done
   has "$(page "$JAR1" meloraw-tasks)" 'چرا زمان ثبت می‌کنیم؟</button>' && ok "لینک سربرگ بعد از بستن هم هست" || bad "لینک سربرگ نیست"
@@ -78,7 +78,7 @@ run_banner() {
   has "$(page "$JAR1" meloraw-tasks)" 'id="mlt-why"' && ok "و چیزی عوض نشد" || bad "با nonce بد بنر بسته شد"
   curl -s -o /dev/null -w '%{http_code}' -d "action=mlt_banner&do=hide" "$MLT_SITE/wp-admin/admin-post.php" | grep -qv 302 && ok "بدون ورود: ریدایرکت نمی‌شود/خطا" || bad "بدون ورود پذیرفته شد"
   if [ -n "${MLT_LOGIN_NOCAP:-}" ]; then
-    curl -s -b "$JAR3" -o /dev/null -w '%{http_code}' -d "action=mlt_banner&do=hide&_wpnonce=x" "$MLT_SITE/wp-admin/admin-post.php" | grep -q 403 && ok "کاربر بدون نقش: ۴۰۳" || bad "کاربر بدون نقش پذیرفته شد"
+    curl -s -b "$JAR4" -o /dev/null -w '%{http_code}' -d "action=mlt_banner&do=hide&_wpnonce=x" "$MLT_SITE/wp-admin/admin-post.php" | grep -q 403 && ok "کاربر بدون نقش: ۴۰۳" || bad "کاربر بدون نقش پذیرفته شد"
   fi
 }
 
@@ -261,9 +261,96 @@ run_routines() {
   [ -n "$rid" ] && api "$MLT_AUTH" "/tasks/$rid" -X DELETE >/dev/null
 }
 
+# «امروز من»: ترتیب، ۳ تمرکز اصلی، فقط تسک‌های خودم، نگاشت‌نشده
+run_today() {
+  echo "== امروز من"
+  : "${MLT_API:?MLT_API}" "${MLT_AUTH:?MLT_AUTH}" "${MLT_AUTH2:?MLT_AUTH2}"
+  local today past h ids exp k mk
+  today=$(date -u +%F); past=$(date -u -d '3 days ago' +%F)
+  declare -A T
+  mk() { T[$1]=$(api "$MLT_AUTH" /tasks -X POST -d "$2" | jq -r .id); }
+  mk A '{"title":"ام-A","owner":"you","estimate_minutes":10,"priority":"high"}'
+  mk B '{"title":"ام-B","owner":"you","estimate_minutes":10,"priority":"low","due_date":"'$today'"}'
+  mk C '{"title":"ام-C","owner":"you","estimate_minutes":10,"priority":"med","due_date":"'$past'"}'
+  mk D '{"title":"ام-D","owner":"you","estimate_minutes":10,"priority":"high"}'
+  mk E '{"title":"ام-E","owner":"you","estimate_minutes":10,"priority":"low"}'
+  mk F '{"title":"ام-F","owner":"you","estimate_minutes":10,"priority":"med"}'
+  mk G '{"title":"ام-G (مارال)","owner":"maral","estimate_minutes":10,"priority":"high"}'
+  mk H '{"title":"ام-H (انجام‌شده)","owner":"you","estimate_minutes":10,"priority":"high"}'
+  for k in B D F; do api "$MLT_AUTH" "/tasks/${T[$k]}" -X PATCH -d '{"status":"in_progress"}' >/dev/null; done
+  api "$MLT_AUTH" "/tasks/${T[H]}" -X PATCH -d '{"status":"done"}' >/dev/null
+  h=$(page "$JAR1" meloraw-tasks-today)
+  ids=$(python3 "$HERE/ui-card.py" ids <<<"$h" | tr '\n' ' ')
+  exp="${T[B]} ${T[C]} ${T[D]} ${T[A]} ${T[F]} ${T[E]} "
+  # در صفحه‌ی امروز تسک‌های دیگرِ همین کاربر (از اجراهای قبلی) هم ممکن است باشند؛ ترتیب شش تسک آزمون را می‌سنجیم
+  local mine; mine=$(for id in $ids; do for k in A B C D E F; do [ "$id" = "${T[$k]}" ] && echo -n "$id "; done; done)
+  [ "$mine" = "$exp" ] && ok "ترتیب: موعددار/دیرشده، اولویت بالا، در حال انجام (B C D A F E)" || bad "ترتیب نادرست: $mine (انتظار $exp)"
+  grep -q "id=\"mlt-t-${T[G]}\"" <<<"$h" && bad "تسک مارال در «امروز من» محمد آمد" || ok "تسک دیگران نیست"
+  grep -q "id=\"mlt-t-${T[H]}\"" <<<"$h" && bad "تسک انجام‌شده آمد" || ok "تسک انجام‌شده نیست"
+  local focus; focus=$(printf '%s' "$h" | python3 -c '
+import re,sys
+h=sys.stdin.read()
+m=re.search(r"تمرکز اصلی.*?</section>",h,re.S)
+print(" ".join(re.findall(r"id=\"mlt-t-(\d+)\"",m.group(0))) if m else "")
+')
+  local first3; first3=$(echo "$ids" | awk '{print $1" "$2" "$3}')
+  [ "$focus" = "$first3" ] && [ "$(wc -w <<<"$focus")" = 3 ] && ok "«تمرکز اصلی» دقیقاً سه تسک اول است" || bad "تمرکز اصلی: '$focus' (سه تای اول '$first3')"
+  grep -q '۸۰٪' <<<"$h" && grep -q '۲۰٪' <<<"$h" && ok "نسبت ۸۰/۲۰ نوشته شده" || bad "نسبت ۸۰/۲۰ نیست"
+  h=$(page "$JAR2" meloraw-tasks-today)
+  grep -q "id=\"mlt-t-${T[G]}\"" <<<"$h" && ! grep -q "id=\"mlt-t-${T[A]}\"" <<<"$h" && ok "مارال فقط تسک‌های خودش را می‌بیند" || bad "امروز مارال"
+  [ -n "${MLT_LOGIN3_UNMAPPED:-}" ] && { login "$JAR3" "$MLT_LOGIN3_UNMAPPED"; has "$(page "$JAR3" meloraw-tasks-today)" 'ساخته نمی‌شود' && ok "حساب نگاشت‌نشده: پیام ساده" || bad "پیام نگاشت‌نشده نیست"; }
+  for k in A B C D E F G H; do api "$MLT_AUTH" "/tasks/${T[$k]}" -X DELETE >/dev/null; done
+}
+
+# گزارش زمان و امتیاز: دسترسی، نمودار بدون کتابخانه، پاز بر اساس دلیل، برچسب سرعت قابل خاموش شدن
+run_time() {
+  echo "== گزارش زمان و امتیاز"
+  : "${MLT_API:?MLT_API}" "${MLT_AUTH:?MLT_AUTH}" "${MLT_AUTH2:?MLT_AUTH2}"
+  local id h body week
+  id=$(api "$MLT_AUTH" /tasks -X POST -d '{"title":"گزارش-ui","owner":"you","estimate_minutes":5}' | jq -r .id)
+  api "$MLT_AUTH" "/tasks/$id/timer/start" -X POST >/dev/null; sleep 1
+  api "$MLT_AUTH" "/tasks/$id/timer/pause" -X POST -d '{"reason":"interrupted"}' >/dev/null; sleep 1
+  api "$MLT_AUTH" "/tasks/$id/timer/resume" -X POST >/dev/null; sleep 1
+  api "$MLT_AUTH" "/tasks/$id/timer/pause" -X POST -d '{"reason":"other_task"}' >/dev/null; sleep 1
+  api "$MLT_AUTH" "/tasks/$id/timer/resume" -X POST >/dev/null
+  api "$MLT_AUTH" "/tasks/$id" -X PATCH -d '{"status":"done"}' >/dev/null
+  h=$(page "$JAR1" meloraw-tasks-time)
+  has "$h" 'زمان خالص کار' && has "$h" 'تعداد پاز' && has "$h" 'امتیاز هفته' && ok "اعداد خلاصه (زمان خالص، پاز، تعداد، امتیاز)" || bad "خلاصه نیست"
+  has "$h" 'قطع شدن / کار دیگر' || true
+  grep -q 'قطع شدن / کار فوری' <<<"$h" && grep -q 'کار دیگر' <<<"$h" && ok "پاز «قطع شدن» و «کار دیگر» جدا نشان داده می‌شود" || bad "دلیل‌های جدا"
+  grep -q '<svg viewBox="0 0 100 10"' <<<"$h" && ok "نمودار با SVG ساده" || bad "SVG نیست"
+  local region; region=$(printf '%s' "$h" | python3 -c '
+import sys,re
+h=sys.stdin.read(); m=re.search(r"<div class=\"mlt\" dir=\"rtl\">.*?(?=<div class=\"clear\">|<div id=\"wpfooter\")",h,re.S); print(m.group(0) if m else "")
+')
+  grep -qE '<script|src="https?://|href="https?://[^"]*(cdn|googleapis|unpkg)' <<<"$region" && bad "کتابخانه/اسکریپت خارجی در گزارش" || ok "بدون اسکریپت یا کتابخانه‌ی خارجی"
+  has "$h" 'تخمین اولیه' && ok "مقایسه با تخمین اولیه" || bad "مقایسه نیست"
+  grep -q 'گزارش-ui\|MH-' <<<"$h" && ok "تسک تایمردار در جدول/نمودار هست" || bad "تسک در گزارش نیست"
+  grep -qE '🐇|🚶|🐢' <<<"$h" && ok "برچسب سرعت در گزارش خودِ فرد" || bad "برچسب سرعت نیست"
+  # مارال گزارش محمد را می‌بیند (ادمین)، ولی برچسب سرعت فقط در گزارش خود فرد است
+  h=$(curl -s -b "$JAR2" "$MLT_SITE/wp-admin/admin.php?page=meloraw-tasks-time&user=${MLT_LOGIN1%%:*}")
+  has "$h" 'زمان خالص کار' && ok "ادمین دیگر گزارش را می‌بیند" || bad "گزارش دیگری دیده نشد"
+  grep -qE '🐇|🚶|🐢' <<<"$h" && bad "برچسب سرعت در گزارش دیگران نباید باشد" || ok "برچسب سرعت در گزارش دیگران نیست"
+  if [ -n "${MLT_LOGIN_NOCAP:-}" ]; then
+    [ "$(curl -s -b "$JAR4" -o /dev/null -w '%{http_code}' "$MLT_SITE/wp-admin/admin.php?page=meloraw-tasks-time")" = 403 ] && ok "کاربر بدون نقش: ۴۰۳" || bad "کاربر بدون نقش گزارش را دید"
+  fi
+  # خاموش/روشن کردن برچسب
+  body=$(python3 "$HERE/ui-form.py" action=mlt_report_action do=speed_hide <<<"$(page "$JAR1" meloraw-tasks-time)")
+  [ "$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -d "$body" "$MLT_SITE/wp-admin/admin-post.php")" = 302 ] && ok "خاموش کردن برچسب سرعت" || bad "خاموش کردن"
+  grep -qE '🐇|🚶|🐢' <<<"$(page "$JAR1" meloraw-tasks-time)" && bad "برچسب هنوز دیده می‌شود" || ok "برچسب دیگر نیست (ذخیره برای خودِ فرد)"
+  body=$(python3 "$HERE/ui-form.py" action=mlt_report_action do=speed_show <<<"$(page "$JAR1" meloraw-tasks-time)")
+  curl -s -b "$JAR1" -o /dev/null -d "$body" "$MLT_SITE/wp-admin/admin-post.php"
+  grep -qE '🐇|🚶|🐢' <<<"$(page "$JAR1" meloraw-tasks-time)" && ok "دوباره روشن شد" || bad "روشن نشد"
+  # بازمحاسبه
+  body=$(python3 "$HERE/ui-form.py" action=mlt_report_action do=recalc <<<"$(page "$JAR1" meloraw-tasks-time)")
+  [ "$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -d "$body" "$MLT_SITE/wp-admin/admin-post.php")" = 302 ] && ok "بازمحاسبه‌ی امتیازها" || bad "بازمحاسبه"
+  curl -s -b "$JAR1" -o /dev/null -d "action=mlt_report_action&do=recalc&_wpnonce=bad" "$MLT_SITE/wp-admin/admin-post.php" -w '%{http_code}' | grep -q 403 && ok "بدون nonce: ۴۰۳" || bad "nonce"
+  api "$MLT_AUTH" "/tasks/$id" -X DELETE >/dev/null
+}
+
 case "$SECTION" in
-  clock) run_clock ;; banner) run_banner ;; settings) run_settings ;; board) run_board ;; routines) run_routines ;;
-  all) run_clock; run_banner; run_settings; run_board; run_routines ;;
+  clock) run_clock ;; today) run_today ;; time) run_time ;; banner) run_banner ;; settings) run_settings ;; board) run_board ;; routines) run_routines ;;
+  all) run_clock; run_banner; run_settings; run_board; run_routines; run_today; run_time ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 [ $FAIL = 0 ] && echo "همه‌ی بررسی‌ها گذشت." || echo "بررسی ناموفق داشت."

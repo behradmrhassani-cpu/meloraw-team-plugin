@@ -47,6 +47,8 @@ class MLT_Admin
     {
         add_menu_page('تسک‌های تیم', 'تسک‌های تیم', MLT_CAP, self::SLUG, [__CLASS__, 'render_board'], 'dashicons-list-view', 3);
         add_submenu_page(self::SLUG, 'برد تسک‌ها', 'برد', MLT_CAP, self::SLUG, [__CLASS__, 'render_board']);
+        add_submenu_page(self::SLUG, 'امروز من', 'امروز من', MLT_CAP, self::TODAY_SLUG, ['MLT_Today', 'render']);
+        add_submenu_page(self::SLUG, 'زمان و امتیاز', 'زمان و امتیاز', MLT_CAP, self::TIME_SLUG, ['MLT_TimeReport', 'render']);
         add_submenu_page(self::SLUG, 'روتین‌ها', 'روتین‌ها', MLT_CAP, self::ROUTINES_SLUG, [__CLASS__, 'render_routines']);
         add_submenu_page(self::SLUG, 'بانک ایده‌ها', 'بانک ایده‌ها', MLT_CAP, self::IDEAS_SLUG, [__CLASS__, 'render_ideas']);
         add_submenu_page(self::SLUG, 'گزارش‌ها', 'گزارش‌ها', MLT_CAP, self::REPORTS_SLUG, ['MLT_Reports', 'render']);

@@ -133,6 +133,26 @@ $wpdb->update("{$p}mlt_tasks", ['status' => 'open'], ['id' => $t2]);
 MLT_Score::recalculate_all();
 check('a task that is no longer done loses its row', (int) $wpdb->get_var("SELECT COUNT(*) FROM {$p}mlt_scores WHERE task_id = $t2") === 0);
 
+echo "== reports: week ranges and the order of 'my today'\n";
+check('2026-W42 = Sun 2026-10-11 .. Sat 2026-10-17', MLT_TimeReport::week_range('2026-W42') === ['2026-10-11', '2026-10-17'], json_encode(MLT_TimeReport::week_range('2026-W42')));
+check('2026-W01 contains Jan 1 and starts on a Sunday', MLT_TimeReport::week_range('2026-W01') === ['2025-12-28', '2026-01-03'], json_encode(MLT_TimeReport::week_range('2026-W01')));
+check('week_key of the first day of a range is that week, of the day before is the previous week', MLT_Score::week_key(strtotime('2026-10-11 00:00:00 UTC')) === '2026-W42' && MLT_Score::week_key(strtotime('2026-10-10 23:59:59 UTC')) === '2026-W41');
+check('bad week key -> no range', MLT_TimeReport::week_range('nope') === null);
+$today = MLT_Time::today();
+$rank = function ($t) { return MLT_Today::order_key($t + ['id' => 1]); };
+$B = ['due_date' => $today, 'priority' => 'low', 'status' => 'in_progress'];
+$C = ['due_date' => gmdate('Y-m-d', time() - 3 * 86400), 'priority' => 'med', 'status' => 'open'];
+$D = ['due_date' => null, 'priority' => 'high', 'status' => 'in_progress'];
+$A = ['due_date' => null, 'priority' => 'high', 'status' => 'open'];
+$F = ['due_date' => null, 'priority' => 'med', 'status' => 'in_progress'];
+$E = ['due_date' => null, 'priority' => 'low', 'status' => 'open'];
+$all = ['B' => $B, 'C' => $C, 'D' => $D, 'A' => $A, 'F' => $F, 'E' => $E];
+$sorted = $all;
+uasort($sorted, function ($x, $y) use ($rank) { return $rank($x) <=> $rank($y); });
+check('order: due/late first (in progress before open), then high priority, then in progress', implode('', array_keys($sorted)) === 'BCDAFE', implode('', array_keys($sorted)));
+$future = ['due_date' => gmdate('Y-m-d', time() + 5 * 86400), 'priority' => 'high', 'status' => 'open'];
+check('a due date in the future does not count as due today', $rank($future)[0] === 1 && $rank($B)[0] === 0);
+
 $clean();
 echo $failed ? "\n$failed check(s) FAILED\n" : "\nall db scenarios passed\n";
 exit($failed ? 1 : 0);

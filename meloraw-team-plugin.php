@@ -37,6 +37,8 @@ require_once MLT_PLUGIN_DIR . 'includes/class-mlt-importer.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-transfer.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-admin.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-board.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-today.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-timereport.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-panel.php';
 
 register_activation_hook(__FILE__, ['MLT_Install', 'activate']);
@@ -44,4 +46,5 @@ add_action('plugins_loaded', ['MLT_Install', 'maybe_upgrade']);
 add_action('rest_api_init', ['MLT_REST', 'register_routes']);
 MLT_Agents::init();
 MLT_Panel::init();
+MLT_TimeReport::init();
 MLT_Admin::init();
