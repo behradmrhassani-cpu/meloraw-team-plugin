@@ -15,10 +15,18 @@ class MLT_Routines
 {
     const FREQS = ['daily' => 'روزانه', 'weekly' => 'هفتگی', 'monthly' => 'ماهانه'];
 
-    /** Key of the period that contains $now (site timezone): 2026-10-12, 2026-W42 or 2026-10. */
+    /** Periods follow Tehran time. The site timezone stays UTC and is never read or changed here. */
+    const TIMEZONE = 'Asia/Tehran';
+
+    public static function now()
+    {
+        return new DateTimeImmutable('now', new DateTimeZone(self::TIMEZONE));
+    }
+
+    /** Key of the period that contains $now (Tehran time): 2026-10-12, 2026-W42 or 2026-10. */
     public static function period_key($freq, $now = null)
     {
-        $now = $now ?: current_datetime();
+        $now = $now ?: self::now();
         if ($freq === 'daily') {
             return $now->format('Y-m-d');
         }

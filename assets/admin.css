@@ -151,3 +151,25 @@
 .mlt-idea-title { font-size: 14px; font-weight: 600; }
 .mlt-idea .mlt-tri { margin-top: 8px; }
 .mlt-card, .mlt-idea { scroll-margin-top: 64px; } /* بعد از ذخیره، کارت زیر نوار ثابت بالای ادمین نرود */
+
+/* گزارش‌ها، لاگ و تنظیمات */
+.mlt-sub { font-size: 18px; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; }
+.mlt-flaglist { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+.mlt-flaglist .mlt-card { margin-bottom: 0; }
+.mlt-flaglist h3 a, .mlt-link { color: var(--cyan); text-decoration: none; }
+.mlt-flaglist h3 a:hover, .mlt-link:hover { text-decoration: underline; }
+.mlt-convert { margin: 12px 0 0; }
+.mlt-logfilters { margin-bottom: 12px; align-items: center; }
+.mlt-date { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 13px; }
+.mlt .mlt-logfilters input[type=date] { background: var(--raised); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-family: inherit; min-height: 36px; color-scheme: dark; }
+.mlt-tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); }
+.mlt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mlt-table th, .mlt-table td { text-align: right; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.mlt-table th { color: var(--dim); font-weight: normal; white-space: nowrap; }
+.mlt-table tbody tr:last-child td { border-bottom: 0; }
+.mlt-table td[dir=ltr] { text-align: left; white-space: nowrap; }
+.mlt-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; color: var(--dim); }
+.mlt-pager a.mlt-btn { text-decoration: none; display: inline-flex; align-items: center; }
+.mlt-settings .mlt-field input[type=text], .mlt .mlt-settings input[type=password] { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 14px; width: 100%; max-width: none; box-shadow: none; }
+.mlt .mlt-settings input:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }
+.mlt .mlt-settings input[disabled] { opacity: .55; }

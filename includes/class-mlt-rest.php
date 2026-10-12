@@ -449,7 +449,7 @@ class MLT_REST
             'user'       => get_current_user_id(),
             'agent'      => self::current_agent(),
             'action'     => $action,
-            'summary'    => $summary,
+            'summary'    => MLT_Log::mask($summary), // a token or password pasted into a title must not reach the log
             'created_at' => current_time('mysql', true),
         ]);
     }

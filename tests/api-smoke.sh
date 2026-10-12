@@ -174,10 +174,19 @@ run_routines() {
   fi
 }
 
+# تنظیمات (توکن ربات) و لاگ فقط از پنل ادمین دیده می‌شوند؛ هیچ مسیر APIای برایشان نیست
+run_hidden() {
+  echo "== مسیرهایی که نباید وجود داشته باشند"
+  req GET /settings;                               expect_code 404 "مسیر settings وجود ندارد"
+  req GET /log;                                    expect_code 404 "مسیر log وجود ندارد"
+  req GET /activity;                               expect_code 404 "مسیر activity وجود ندارد"
+  expect_persian "پیام مسیر ناموجود فارسی است"
+}
+
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

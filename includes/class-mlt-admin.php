@@ -9,6 +9,9 @@ class MLT_Admin
     const IMPORT_SLUG = 'meloraw-tasks-import';
     const ROUTINES_SLUG = 'meloraw-tasks-routines';
     const IDEAS_SLUG = 'meloraw-tasks-ideas';
+    const REPORTS_SLUG = 'meloraw-tasks-reports';
+    const LOG_SLUG = 'meloraw-tasks-log';
+    const SETTINGS_SLUG = 'meloraw-tasks-settings';
 
     const LABELS = [
         'status'   => ['open' => 'انجام نشده', 'in_progress' => 'در حال انجام', 'done' => 'انجام‌شده'],
@@ -29,6 +32,8 @@ class MLT_Admin
         add_action('admin_post_mlt_import', [__CLASS__, 'handle_import']);
         add_action('admin_post_mlt_routine_status', [__CLASS__, 'handle_routine_status']);
         add_action('admin_post_mlt_idea_status', [__CLASS__, 'handle_idea_status']);
+        add_action('admin_post_mlt_convert_comment', ['MLT_Reports', 'handle_convert']);
+        add_action('admin_post_mlt_save_settings', ['MLT_Settings', 'handle_save']);
         add_action('admin_post_mlt_flag_comment', [__CLASS__, 'handle_flag_comment']);
     }
 
@@ -38,13 +43,16 @@ class MLT_Admin
         add_submenu_page(self::SLUG, 'برد تسک‌ها', 'برد', MLT_CAP, self::SLUG, [__CLASS__, 'render_board']);
         add_submenu_page(self::SLUG, 'روتین‌ها', 'روتین‌ها', MLT_CAP, self::ROUTINES_SLUG, [__CLASS__, 'render_routines']);
         add_submenu_page(self::SLUG, 'بانک ایده‌ها', 'بانک ایده‌ها', MLT_CAP, self::IDEAS_SLUG, [__CLASS__, 'render_ideas']);
+        add_submenu_page(self::SLUG, 'گزارش‌ها', 'گزارش‌ها', MLT_CAP, self::REPORTS_SLUG, ['MLT_Reports', 'render']);
+        add_submenu_page(self::SLUG, 'لاگ فعالیت', 'لاگ', MLT_CAP, self::LOG_SLUG, ['MLT_Log', 'render']);
         add_submenu_page(self::SLUG, 'ایمپورت از فایل قدیمی', 'ایمپورت', MLT_CAP, self::IMPORT_SLUG, [__CLASS__, 'render_import']);
+        add_submenu_page(self::SLUG, 'تنظیمات', 'تنظیمات', MLT_Settings::CAP, self::SETTINGS_SLUG, ['MLT_Settings', 'render']);
     }
 
     public static function assets($hook)
     {
         $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
-        if (!in_array($page, [self::SLUG, self::IMPORT_SLUG, self::ROUTINES_SLUG, self::IDEAS_SLUG], true)) {
+        if (!in_array($page, [self::SLUG, self::IMPORT_SLUG, self::ROUTINES_SLUG, self::IDEAS_SLUG, self::REPORTS_SLUG, self::LOG_SLUG, self::SETTINGS_SLUG], true)) {
             return;
         }
         // Version by file mtime so browser/LiteSpeed/Cloudflare caches refetch the CSS after every deploy.
@@ -124,7 +132,7 @@ class MLT_Admin
                             <p class="mlt-empty">تسکی نیست.</p>
                         <?php endif; ?>
                         <?php foreach ($tasks as $t) : ?>
-                            <article class="mlt-card mlt-status--<?php echo esc_attr($t['status']); ?><?php echo (int) $t['id'] === $highlight ? ' mlt-card--new' : ''; ?><?php echo (int) $t['id'] === $open ? ' mlt-commenting' : ''; ?>">
+                            <article id="mlt-t-<?php echo (int) $t['id']; ?>" class="mlt-card mlt-status--<?php echo esc_attr($t['status']); ?><?php echo (int) $t['id'] === $highlight ? ' mlt-card--new' : ''; ?><?php echo (int) $t['id'] === $open ? ' mlt-commenting' : ''; ?>">
                                 <h3><?php echo esc_html($t['title']); ?></h3>
                                 <?php if ($t['description'] !== '') : ?>
                                     <p><?php echo esc_html(wp_trim_words($t['description'], 30)); ?></p>
@@ -418,7 +426,7 @@ class MLT_Admin
     }
 
     /** Comment text, escaped first; each URL is then isolated as LTR so its trailing "/" does not jump to the wrong end of an RTL line. */
-    private static function comment_html($text)
+    public static function comment_html($text)
     {
         return preg_replace('~https?://[^\s<]+~u', '<bdi dir="ltr">$0</bdi>', esc_html($text));
     }
@@ -440,9 +448,9 @@ class MLT_Admin
     }
 
     /** Capability + nonce check with Persian failure pages (core's nonce-failure page is English). */
-    private static function verify($action)
+    public static function verify($action, $cap = MLT_CAP)
     {
-        if (!current_user_can(MLT_CAP)) {
+        if (!current_user_can($cap)) {
             wp_die('دسترسی ندارید.', 'خطا', ['response' => 403]);
         }
         $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field(wp_unslash($_POST['_wpnonce'])) : '';
@@ -471,7 +479,7 @@ class MLT_Admin
     }
 
     /** $anchor ("#id") brings the browser back to the item that was changed. */
-    private static function redirect_with(array $notice, $page, array $args, $anchor)
+    public static function redirect_with(array $notice, $page, array $args, $anchor)
     {
         set_transient(self::notice_key(), $notice, MINUTE_IN_SECONDS);
         wp_safe_redirect(add_query_arg(['page' => $page] + $args, admin_url('admin.php')) . $anchor);
@@ -492,13 +500,18 @@ class MLT_Admin
         foreach (MLT_Routines::views() as $v) {
             $groups[$v['frequency']]['items'][] = $v;
         }
+        $now = MLT_Routines::now();
         ?>
         <div class="mlt" dir="rtl">
             <header class="mlt-head">
                 <h1>روتین‌ها</h1>
             </header>
             <?php self::render_notice(); ?>
-            <p class="mlt-hint">با عوض‌شدن روز، هفته یا ماه (طبق منطقه‌ی زمانی سایت: <code dir="ltr"><?php echo esc_html(wp_timezone_string() === '+00:00' ? 'UTC' : wp_timezone_string()); ?></code>) وضعیت روتین‌ها خودکار از نو شروع می‌شود.</p>
+            <p class="mlt-hint">
+                منطقه‌ی زمانی روتین‌ها: <code dir="ltr"><?php echo esc_html(MLT_Routines::TIMEZONE); ?></code>
+                (<code dir="ltr">UTC<?php echo esc_html($now->format('P')); ?></code>)، اکنون <code dir="ltr"><?php echo esc_html($now->format('Y-m-d H:i')); ?></code>.
+                با عوض‌شدن روز، هفته یا ماه به این وقت، وضعیت روتین‌ها خودکار از نو شروع می‌شود. منطقه‌ی زمانی سایت تغییری نمی‌کند.
+            </p>
             <?php foreach ($groups as $g) : ?>
                 <?php $done = count(array_filter($g['items'], function ($v) { return $v['status'] === 'done'; })); ?>
                 <section class="mlt-rsec">
@@ -620,7 +633,7 @@ class MLT_Admin
         <?php
     }
 
-    private static function render_notice()
+    public static function render_notice()
     {
         $notice = get_transient(self::notice_key());
         delete_transient(self::notice_key());
