@@ -35,6 +35,7 @@ class MLT_Admin
         add_action('admin_post_mlt_set_status', [__CLASS__, 'handle_set_status']);
         add_action('admin_post_mlt_add_comment', [__CLASS__, 'handle_add_comment']);
         add_action('admin_post_mlt_import', [__CLASS__, 'handle_import']);
+        add_action('admin_post_mlt_template', [__CLASS__, 'handle_template']);
         add_action('admin_post_mlt_routine_status', [__CLASS__, 'handle_routine_status']);
         add_action('admin_post_mlt_routine_template', [__CLASS__, 'handle_routine_template']);
         add_action('admin_post_mlt_idea_status', [__CLASS__, 'handle_idea_status']);
@@ -111,7 +112,7 @@ class MLT_Admin
         <div class="mlt" dir="rtl">
             <?php MLT_Admin::topbar(); ?>
             <header class="mlt-head">
-                <h1>ایمپورت از فایل JSON قدیمی</h1>
+                <h1>ایمپورت از فایل JSON</h1>
             </header>
             <?php if ($notice) : ?>
                 <div class="mlt-notice mlt-notice--<?php echo esc_attr($notice['type']); ?>"><?php echo esc_html($notice['msg']); ?></div>
@@ -119,10 +120,11 @@ class MLT_Admin
             <?php if ($report) : ?>
                 <?php self::render_report($report); ?>
             <?php endif; ?>
+            <?php self::render_templates(); ?>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" class="mlt-import">
                 <input type="hidden" name="action" value="mlt_import">
                 <?php wp_nonce_field('mlt_import'); ?>
-                <p class="mlt-hint">فایل <code dir="ltr">tasks-export.json</code> را انتخاب کن (حداکثر ۲ مگابایت). تسک‌ها، روتین‌ها و ایده‌ها وارد می‌شوند؛ کامنت و پرچم هرگز وارد نمی‌شوند. مورد تکراری (بر اساس شناسه‌ی قدیمی) دوباره ساخته نمی‌شود، پس اجرای دوباره بی‌خطر است. فایل روی سرور ذخیره نمی‌شود.</p>
+                <p class="mlt-hint">فایلی به قالب افزونه (قالب را از پایین دانلود کن) یا فایل قدیمی <code dir="ltr">tasks-export.json</code> را انتخاب کن (حداکثر ۵ مگابایت، هر بخش تا ۵۰۰۰ ردیف). تسک‌ها، روتین‌ها و ایده‌ها وارد می‌شوند؛ کامنت و پرچم هرگز وارد نمی‌شوند. مورد تکراری (بر اساس شناسه، یا عنوان اگر شناسه نداشته باشد) دوباره ساخته نمی‌شود، پس اجرای دوباره بی‌خطر است. با «فقط بررسی کن» همه‌ی خطاها با شماره‌ی ردیف نشان داده می‌شوند و چیزی ذخیره نمی‌شود. کد تسک (MH-1) هنگام ایمپورت ساخته می‌شود و در فایل نیست. فایل روی سرور ذخیره نمی‌شود.</p>
                 <label class="mlt-field">فایل JSON
                     <input type="file" name="file" accept=".json,application/json" required>
                 </label>
@@ -133,12 +135,58 @@ class MLT_Admin
         <?php
     }
 
+    /** Download buttons for the empty and the sample template of each type. Read-only GET links with a nonce. */
+    private static function render_templates()
+    {
+        $labels = ['tasks' => 'تسک‌ها', 'routines' => 'روتین‌ها', 'ideas' => 'ایده‌ها', 'full' => 'کامل (هر سه)'];
+        ?>
+        <div class="mlt-report mlt-templates">
+            <h2>دانلود قالب</h2>
+            <p class="mlt-hint">قالب خالی فقط ساختار است؛ قالب نمونه‌دار چند ردیف ساختگی دارد که بدون خطا وارد می‌شود. این فایل‌ها را می‌توانی به ایجنتت بدهی (متن آماده: <code dir="ltr">docs/import-template/agent-prompt-import.md</code>). فهرست کامل فیلدها: <code dir="ltr">GET /schema</code>.</p>
+            <table>
+                <?php foreach ($labels as $type => $label) : ?>
+                    <tr>
+                        <th><?php echo esc_html($label); ?></th>
+                        <?php foreach (['empty' => 'قالب خالی', 'sample' => 'قالب نمونه‌دار'] as $variant => $vlabel) : ?>
+                            <td><a class="mlt-btn mlt-btn--ghost mlt-btn--sm" href="<?php echo esc_url(wp_nonce_url(add_query_arg(['action' => 'mlt_template', 'type' => $type, 'variant' => $variant], admin_url('admin-post.php')), 'mlt_template')); ?>" download="<?php echo esc_attr(MLT_Schema::template_filename($type, $variant)); ?>"><?php echo esc_html($vlabel); ?></a></td>
+                        <?php endforeach; ?>
+                    </tr>
+                <?php endforeach; ?>
+            </table>
+        </div>
+        <?php
+    }
+
+    /** admin-post.php?action=mlt_template&type=…&variant=…&_wpnonce=… : sends the template as a JSON file. */
+    public static function handle_template()
+    {
+        if (!current_user_can(MLT_CAP)) {
+            wp_die('دسترسی ندارید.', 'خطا', ['response' => 403]);
+        }
+        $nonce = isset($_GET['_wpnonce']) && is_string($_GET['_wpnonce']) ? sanitize_text_field(wp_unslash($_GET['_wpnonce'])) : '';
+        if (!wp_verify_nonce($nonce, 'mlt_template')) {
+            wp_die('اعتبار این لینک تمام شده است. صفحه‌ی ایمپورت را دوباره باز کن.', 'خطا', ['response' => 403]);
+        }
+        $type = isset($_GET['type']) && is_string($_GET['type']) ? sanitize_key(wp_unslash($_GET['type'])) : '';
+        $variant = isset($_GET['variant']) && is_string($_GET['variant']) ? sanitize_key(wp_unslash($_GET['variant'])) : '';
+        if (!in_array($type, MLT_Schema::TYPES, true) || !in_array($variant, ['empty', 'sample'], true)) {
+            wp_die('نوع یا حالت قالب نامعتبر است.', 'خطا', ['response' => 400]);
+        }
+        $body = MLT_Schema::template_json($type, $variant);
+        nocache_headers();
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . MLT_Schema::template_filename($type, $variant) . '"');
+        header('X-Content-Type-Options: nosniff');
+        echo $body; // JSON built from code constants only
+        exit;
+    }
+
     private static function render_report(array $report)
     {
         $total = ['created' => 0, 'duplicate' => 0, 'invalid' => 0];
         ?>
         <div class="mlt-report">
-            <h2><?php echo $report['dry'] ? 'نتیجه‌ی بررسی (چیزی ذخیره نشد)' : 'نتیجه‌ی ایمپورت'; ?></h2>
+            <h2><?php echo $report['dry'] ? 'نتیجه‌ی بررسی (چیزی ذخیره نشد)' : 'نتیجه‌ی ایمپورت'; ?> <span class="mlt-count"><?php echo ($report['mode'] ?? 'legacy') === 'template' ? 'قالب افزونه' : 'فایل قدیمی'; ?></span></h2>
             <table>
                 <thead>
                     <tr>
@@ -171,7 +219,15 @@ class MLT_Admin
                 <h3>ردیف‌های نامعتبر<?php echo $total['invalid'] > count($report['reasons']) ? ' (' . esc_html(count($report['reasons'])) . ' مورد اول)' : ''; ?></h3>
                 <ul class="mlt-reasons">
                     <?php foreach ($report['reasons'] as $r) : ?>
-                        <li><?php echo esc_html(MLT_Importer::SECTIONS[$r['section']]); ?> · <code dir="ltr"><?php echo esc_html($r['id']); ?></code> — <?php echo esc_html($r['reason']); ?></li>
+                        <li><?php echo esc_html(MLT_Importer::SECTIONS[$r['section']] ?? $r['section']); ?> · ردیف <code dir="ltr"><?php echo esc_html($r['row']); ?></code><?php echo $r['id'] !== '' ? ' (' . esc_html($r['id']) . ')' : ''; ?> — <?php echo esc_html($r['reason']); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+            <?php if (!empty($report['warnings'])) : ?>
+                <h3>هشدارها (ردیف رد نشد)</h3>
+                <ul class="mlt-reasons">
+                    <?php foreach ($report['warnings'] as $w) : ?>
+                        <li><?php echo esc_html(MLT_Importer::SECTIONS[$w['section']] ?? $w['section']); ?> · ردیف <code dir="ltr"><?php echo esc_html($w['row']); ?></code> — <?php echo esc_html($w['message']); ?></li>
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>
@@ -192,7 +248,7 @@ class MLT_Admin
         } elseif (strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) !== 'json') {
             $error = 'فقط فایل با پسوند json قبول است.';
         } elseif ($file['size'] > MLT_Importer::MAX_BYTES) {
-            $error = 'حجم فایل بیشتر از ۲ مگابایت است.';
+            $error = 'حجم فایل بیشتر از ۵ مگابایت است.';
         } else {
             // read straight from PHP's temp upload; the file is never moved or stored
             $result = MLT_Importer::run(file_get_contents($file['tmp_name']), !empty($_POST['dry_run']));

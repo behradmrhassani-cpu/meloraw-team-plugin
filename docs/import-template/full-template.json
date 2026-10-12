@@ -1,0 +1,127 @@
+{
+    "format": "meloraw-tasks-import",
+    "version": 1,
+    "_help": "نمونه‌ی ساختگی. مقدارها را با داده‌ی خودت عوض کن؛ کلیدهایی که با _ شروع می‌شوند نادیده گرفته می‌شوند.",
+    "tasks": [
+        {
+            "id": "demo-t1",
+            "title": "نمونه: نوشتن متن معرفی ترک",
+            "description": "یک پاراگراف کوتاه برای صفحه‌ی ترک.",
+            "owner": "you",
+            "assignees": [
+                "maral"
+            ],
+            "status": "open",
+            "bucket": "boost",
+            "priority": "high",
+            "kind": "new",
+            "estimate_minutes": 45,
+            "due_date": "2030-01-15",
+            "done_criteria": "متن نهایی در پوشه‌ی مشترک و تأییدشده توسط یک نفر دیگر."
+        },
+        {
+            "id": "demo-t2",
+            "title": "نمونه: بررسی افکت‌های صوتی دسته‌ی اول",
+            "description": "",
+            "owner": "chakra",
+            "assignees": [],
+            "status": "in_progress",
+            "bucket": "normal",
+            "priority": "med",
+            "kind": "phase",
+            "estimate_minutes": 90,
+            "due_date": null,
+            "done_criteria": ""
+        },
+        {
+            "title": "نمونه: تسک بدون شناسه (تکراری بودن با عنوان تشخیص داده می‌شود)",
+            "description": "",
+            "owner": "maral",
+            "assignees": [],
+            "status": "open",
+            "bucket": "blocker",
+            "priority": "low",
+            "kind": "new",
+            "estimate_minutes": 20,
+            "due_date": "2030-02-01",
+            "done_criteria": ""
+        }
+    ],
+    "routines": [
+        {
+            "id": "demo-r1",
+            "title": "نمونه: مرور صندوق پیام‌ها",
+            "description": "هر روز یک بار.",
+            "owner": "you",
+            "assignees": [],
+            "frequency": "daily",
+            "status": "open",
+            "bucket": "normal",
+            "priority": "med",
+            "estimate_minutes": 15,
+            "due_date": null,
+            "done_criteria": "همه‌ی پیام‌ها پاسخ یا برچسب خورده‌اند.",
+            "recurrence_until": null
+        },
+        {
+            "id": "demo-r2",
+            "title": "نمونه: برنامه‌ی انتشار هفته‌ی بعد",
+            "description": "",
+            "owner": "maral",
+            "assignees": [
+                "you"
+            ],
+            "frequency": "weekly",
+            "status": "open",
+            "bucket": "boost",
+            "priority": "high",
+            "estimate_minutes": 60,
+            "due_date": null,
+            "done_criteria": "",
+            "recurrence_until": "2030-12-31"
+        },
+        {
+            "id": "demo-r3",
+            "title": "نمونه: گزارش ماهانه",
+            "description": "",
+            "owner": "chakra",
+            "assignees": [],
+            "frequency": "monthly",
+            "status": "open",
+            "bucket": "normal",
+            "priority": "low",
+            "estimate_minutes": 120,
+            "due_date": null,
+            "done_criteria": "",
+            "recurrence_until": null
+        }
+    ],
+    "ideas": [
+        {
+            "id": "demo-i1",
+            "title": "نمونه: ترک ملایم با پیانو و باران",
+            "description": "",
+            "type": "track",
+            "category": "آرام",
+            "tag": "piano",
+            "status": "open"
+        },
+        {
+            "id": "demo-i2",
+            "title": "نمونه: صدای قدم روی برف",
+            "description": "",
+            "type": "sfx",
+            "category": "محیط",
+            "tag": "snow",
+            "status": "open"
+        },
+        {
+            "title": "نمونه: ایده بدون شناسه",
+            "description": "",
+            "type": "sfx",
+            "category": "محیط",
+            "tag": "",
+            "status": "open"
+        }
+    ]
+}

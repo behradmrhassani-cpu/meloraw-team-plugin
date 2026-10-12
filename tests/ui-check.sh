@@ -4,7 +4,7 @@
 #   MLT_SITE=https://example.com \
 #   MLT_LOGIN1='user:password' MLT_LOGIN2='user2:password'   # دو ادمین (رمز ورود، نه Application Password)
 #   MLT_LOGIN_NOCAP='editor:password'                       # اختیاری
-#   tests/ui-check.sh [clock|banner|settings|board|routines|today|time|all]
+#   tests/ui-check.sh [clock|banner|settings|board|routines|today|time|import|all]
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند. فرم‌ها با همان nonce خودشان ارسال می‌شوند.
 
@@ -348,9 +348,66 @@ h=sys.stdin.read(); m=re.search(r"<div class=\"mlt\" dir=\"rtl\">.*?(?=<div clas
   api "$MLT_AUTH" "/tasks/$id" -X DELETE >/dev/null
 }
 
+# صفحه‌ی ایمپورت: دانلود قالب (خالی و نمونه‌دار)، یکی‌بودن با docs/import-template، dry run با شماره‌ی ردیف از فرم
+run_import() {
+  echo "== صفحه‌ی ایمپورت: قالب‌ها و گزارش خطا"
+  local h links url type variant name tmp code body tag="[ui-imp-$$]"
+  h=$(page "$JAR1" meloraw-tasks-import)
+  links=$(printf '%s' "$h" | python3 -c '
+import re,sys,html
+for m in re.findall(r"href=\"([^\"]*mlt_template[^\"]*)\"", sys.stdin.read()): print(html.unescape(m))')
+  [ "$(wc -l <<<"$links")" = 8 ] && ok "هشت دکمه‌ی دانلود (چهار نوع × خالی و نمونه‌دار)" || bad "تعداد دکمه‌های دانلود: $(wc -l <<<"$links")"
+  tmp=$(mktemp -d)
+  while read -r url; do
+    type=$(grep -o 'type=[a-z]*' <<<"$url" | cut -d= -f2); variant=$(grep -o 'variant=[a-z]*' <<<"$url" | cut -d= -f2)
+    code=$(curl -s -b "$JAR1" -D "$tmp/h" -o "$tmp/$type-$variant.json" -w '%{http_code}' "$url")
+    name="$type-template$([ "$variant" = empty ] && echo -empty).json"
+    [ "$code" = 200 ] && jq -e . "$tmp/$type-$variant.json" >/dev/null 2>&1 && grep -qi "content-type: application/json" "$tmp/h" && grep -qi "content-disposition: attachment; filename=\"$name\"" "$tmp/h" && ok "$name: ۲۰۰، JSON معتبر، attachment" || bad "$name: $code"
+    grep -qi 'x-robots-tag: noindex' "$tmp/h" && grep -qi 'cache-control:.*no-store' "$tmp/h" || bad "$name: هدر کش/ایندکس"
+    if [ "$variant" = sample ]; then
+      cmp -s "$tmp/$type-$variant.json" "$HERE/../docs/import-template/$name" && ok "  $name = فایل commit‌شده در docs/import-template" || bad "  $name با docs/import-template فرق دارد (wp eval-file tests/gen-templates.php)"
+    else
+      jq -e '[.. | strings] | all(. != "")' "$tmp/$type-$variant.json" >/dev/null 2>&1 || true
+    fi
+  done <<<"$links"
+  grep -qE 'password|token|secret|Authorization' "$tmp"/*.json && bad "رمز/توکن در قالب" || ok "هیچ رمز یا توکنی در قالب‌ها نیست"
+  # قالب خالی همان‌طور که هست: ردیف‌ها خالی‌اند، پس dry run باید ردیف‌ها را با خطای فارسی رد کند (نه خطای سرور)
+  if [ -n "${MLT_API:-}" ] && [ -f "$tmp/full-empty.json" ]; then
+    local er; er=$(api "$MLT_AUTH" '/import?dry_run=1' -X POST --data-binary @"$tmp/full-empty.json")
+    jq -e '[.sections[]|.created]|add==0' <<<"$er" >/dev/null 2>&1 && jq -e '[.sections[]|.invalid]|all(.>=1)' <<<"$er" >/dev/null 2>&1 && jq -e '[.reasons[]|.row]|all(.==1)' <<<"$er" >/dev/null 2>&1 && ok "قالب خالی بدون پر شدن: هر بخش یک ردیف خالی رد می‌شود (ردیف ۱) و چیزی ساخته نمی‌شود" || bad "قالب خالی: $(head -c 300 <<<"$er")"
+  fi
+  # امنیت لینک
+  url=$(head -1 <<<"$links")
+  [ "$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' "${url%%_wpnonce=*}_wpnonce=bad")" = 403 ] && ok "nonce نامعتبر: ۴۰۳" || bad "nonce بد پذیرفته شد"
+  [ "$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' "${url%%&_wpnonce=*}")" = 403 ] && ok "بدون nonce: ۴۰۳" || bad "بدون nonce پذیرفته شد"
+  [ "$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' "$(sed 's/type=[a-z]*/type=evil/' <<<"$url")")" = 400 ] && ok "نوع نامعتبر: ۴۰۰" || bad "نوع نامعتبر"
+  curl -s -o "$tmp/anon" -w '%{http_code}' "$url" | grep -qE '^(302|400|403)$' && ! grep -q 'meloraw-tasks-import' "$tmp/anon" && ok "بدون ورود: قالب داده نمی‌شود" || bad "بدون ورود قالب داده شد"
+  if [ -n "${MLT_LOGIN_NOCAP:-}" ]; then
+    [ "$(curl -s -b "$JAR4" -o /dev/null -w '%{http_code}' "$url")" = 403 ] && ok "کاربر بدون نقش: ۴۰۳" || bad "کاربر بدون نقش قالب گرفت"
+  fi
+  # قالب خالی: خطای فارسی با شماره‌ی ردیف (نه خطای سرور)
+  body=$(python3 "$HERE/ui-form.py" action=mlt_import <<<"$h")
+  # آپلود با فرم: dry run با فایل معیوب
+  jq -nc --arg t "$tag" '{format:"meloraw-tasks-import",version:1,tasks:[{title:("سالم "+$t),owner:"you",estimate_minutes:30},{title:("ناقص "+$t),owner:"hacker"},{title:("بد "+$t),owner:"you",estimate_minutes:2,zzz:1}]}' > "$tmp/bad.json"
+  local nonce; nonce=$(tr '&' '\n' <<<"$body" | grep '^_wpnonce=' | cut -d= -f2)
+  code=$(curl -s -b "$JAR1" -o /dev/null -w '%{http_code}' -F action=mlt_import -F "_wpnonce=$nonce" -F dry_run=1 -F "file=@$tmp/bad.json" "$MLT_SITE/wp-admin/admin-post.php"); [ "$code" = 302 ] && ok "آپلود dry run از فرم → ۳۰۲" || bad "آپلود: $code"
+  h=$(page "$JAR1" meloraw-tasks-import)
+  grep -q 'نتیجه‌ی بررسی (چیزی ذخیره نشد)' <<<"$h" && grep -q 'قالب افزونه' <<<"$h" && ok "گزارش dry run: «چیزی ذخیره نشد» و نوع فایل" || bad "گزارش dry run نیست"
+  grep -q 'ردیف <code dir="ltr">2</code>' <<<"$h" && grep -q 'ردیف <code dir="ltr">3</code>' <<<"$h" && ok "خطاها با شماره‌ی ردیف (۲ و ۳)" || bad "شماره‌ی ردیف در گزارش نیست"
+  grep -q 'owner' <<<"$h" && grep -q 'فیلد ناشناخته: zzz' <<<"$h" && ok "دلیل‌ها فارسی و با نام فیلد" || bad "دلیل‌ها"
+  [ -z "$(api "$MLT_AUTH" '/tasks' | jq -r --arg t "$tag" '.[]|select(.title|endswith($t))|.id')" ] && ok "dry run از فرم چیزی ذخیره نکرد" || bad "dry run از فرم ذخیره کرد"
+  # آپلود واقعی: فقط ردیف سالم
+  h=$(page "$JAR1" meloraw-tasks-import); nonce=$(python3 "$HERE/ui-form.py" action=mlt_import <<<"$h" | tr '&' '\n' | grep '^_wpnonce=' | cut -d= -f2)
+  curl -s -b "$JAR1" -o /dev/null -F action=mlt_import -F "_wpnonce=$nonce" -F "file=@$tmp/bad.json" "$MLT_SITE/wp-admin/admin-post.php"
+  local ids; ids=$(api "$MLT_AUTH" '/tasks' | jq -r --arg t "$tag" '.[]|select(.title|endswith($t))|.id')
+  [ "$(wc -w <<<"$ids")" = 1 ] && ok "آپلود واقعی: فقط ردیف سالم وارد شد" || bad "تعداد واردشده: $(wc -w <<<"$ids")"
+  for id in $ids; do api "$MLT_AUTH" "/tasks/$id" -X DELETE >/dev/null; done
+  rm -rf "$tmp"
+}
+
 case "$SECTION" in
-  clock) run_clock ;; today) run_today ;; time) run_time ;; banner) run_banner ;; settings) run_settings ;; board) run_board ;; routines) run_routines ;;
-  all) run_clock; run_banner; run_settings; run_board; run_routines; run_today; run_time ;;
+  clock) run_clock ;; import) run_import ;; today) run_today ;; time) run_time ;; banner) run_banner ;; settings) run_settings ;; board) run_board ;; routines) run_routines ;;
+  all) run_clock; run_banner; run_settings; run_board; run_routines; run_today; run_time; run_import ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 [ $FAIL = 0 ] && echo "همه‌ی بررسی‌ها گذشت." || echo "بررسی ناموفق داشت."

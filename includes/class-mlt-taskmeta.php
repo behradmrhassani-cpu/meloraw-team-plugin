@@ -127,9 +127,9 @@ class MLT_Taskmeta
     }
 
     /** Called right after a task row was inserted: owner as assignee, and a code for board tasks. */
-    public static function after_insert($task_id, $owner, $code_slug)
+    public static function after_insert($task_id, $owner, $code_slug, array $assignees = [])
     {
-        self::set_assignees($task_id, [], $owner);
+        self::set_assignees($task_id, $assignees, $owner);
         self::assign_code($task_id, $code_slug);
     }
 

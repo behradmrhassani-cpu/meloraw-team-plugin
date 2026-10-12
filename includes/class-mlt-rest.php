@@ -107,6 +107,9 @@ class MLT_REST
         self::route('/me', [
             ['GET', 'get_me'],
         ]);
+        self::route('/schema', [
+            ['GET', 'get_schema'],
+        ]);
         self::route('/export', [
             ['GET', 'export_all'],
         ]);
@@ -633,6 +636,12 @@ class MLT_REST
 
     // ---- export / import ----
 
+    /** The import file format: fields, allowed values, limits. Read-only; agents read it before building a file. */
+    public static function get_schema()
+    {
+        return MLT_Schema::describe();
+    }
+
     public static function export_all()
     {
         $data = MLT_Transfer::export();
@@ -657,9 +666,9 @@ class MLT_REST
         }
         $report = MLT_Importer::run($body, $dry, false);
         if (is_wp_error($report)) {
-            return self::bad_request($report->get_error_message());
+            return $report->get_error_data() ? $report : self::bad_request($report->get_error_message());
         }
-        return ['format' => 'legacy'] + $report;
+        return ['format' => $report['mode']] + $report; // 'template' (our format) or 'legacy' (old board file)
     }
 
     // ---- routines ----

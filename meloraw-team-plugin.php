@@ -33,6 +33,7 @@ require_once MLT_PLUGIN_DIR . 'includes/class-mlt-reports.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-settings.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-telegram.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-routines.php';
+require_once MLT_PLUGIN_DIR . 'includes/class-mlt-schema.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-importer.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-transfer.php';
 require_once MLT_PLUGIN_DIR . 'includes/class-mlt-admin.php';

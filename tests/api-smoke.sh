@@ -4,11 +4,12 @@
 #   MLT_BASE=https://example.com/wp-json/meloraw-tasks/v1 \
 #   MLT_AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx' \
 #   [MLT_AUTH_NOCAP='editor:xxxx ...'] \
-#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|timer|score|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
+#   tests/api-smoke.sh [auth|tasks|comments|flag|status|routines|notify|fields|estimate|timer|score|import|headers|scope|export|ratelimit|hidden|all]  (ratelimit جزو all نیست)
 #
 # رمزها فقط از متغیر محیطی خوانده می‌شوند و چاپ نمی‌شوند. نیازمند curl و jq.
 
 set -u
+HERE=$(cd "$(dirname "$0")" && pwd)
 : "${MLT_BASE:?MLT_BASE را تنظیم کنید}"
 : "${MLT_AUTH:?MLT_AUTH را تنظیم کنید}"
 SECTION="${1:-all}"
@@ -474,6 +475,111 @@ run_score() {
   req GET "/scores?week=$week&user=all";            expect_code 200 "نمای همه (ادمین)"
 }
 
+# فرمت ایمپورت: GET /schema، قالب‌های نمونه، فیلدهای تازه، خطاها با شماره‌ی ردیف، تکراری‌ها
+# (همه‌ی عنوان‌ها و شناسه‌ها با یک پسوند یکتا ساخته می‌شوند و در پایان پاک می‌شوند)
+run_import() {
+  echo "== فرمت ایمپورت و GET /schema"
+  local tag="[smoke-$$]" f t before after id
+  req GET /schema "" -;                            expect_code 401 "schema بدون توکن"
+  [ -n "${MLT_AUTH_NOCAP:-}" ] && { req GET /schema "" "$MLT_AUTH_NOCAP"; expect_code 403 "schema بدون نقش ادمین"; }
+  req GET /schema;                                 expect_code 200 "schema با ادمین"
+  expect_hdr 'X-Robots-Tag' 'noindex' "  هدر X-Robots-Tag"
+  expect_jq '[.format,.version]|join(",")' 'meloraw-tasks-import,1' "نام و نسخه‌ی قالب"
+  expect_jq '[.limits.max_bytes,.limits.max_rows_per_section,.limits.description_max,.limits.estimate_min_minutes]|join(",")' '5242880,5000,20000,5' "سقف‌ها (۵MB، ۵۰۰۰ ردیف، ۲۰۰۰۰ نویسه، ۵ دقیقه)"
+  expect_jq '[.sections.tasks.title.required,.sections.tasks.owner.required,.sections.routines.frequency.required,.sections.ideas.title.required]|join(",")' 'true,true,true,true' "فیلدهای اجباری"
+  expect_jq '.enums.status|join(",")' 'open,in_progress,done' "مقدارهای مجاز status"
+  expect_jq '(.sections.tasks|keys|sort|join(","))' 'assignees,bucket,created_at,description,done_criteria,due_date,estimate_minutes,id,kind,owner,priority,status,title' "فیلدهای تسک"
+  expect_jq '(.sections.routines|has("recurrence_until") and has("frequency") and has("estimate_minutes"))' 'true' "فیلدهای روتین"
+  expect_jq '(.sections.ideas|keys|sort|join(","))' 'category,created_at,description,id,status,tag,title,type' "فیلدهای ایده"
+  local readme="$HERE/../docs/import-template/README.md"
+  if [ -f "$readme" ]; then
+    local missing; missing=$(echo "$BODY" | jq -r '[.sections[]|keys[]]|unique[]' | while read -r k; do grep -q "\`$k\`" "$readme" || echo "$k"; done)
+    [ -z "$missing" ] && ok "README قالب همه‌ی فیلدهای schema را توضیح می‌دهد" || bad "در README نیست: $missing"
+  fi
+
+  # قالب‌های نمونه (با پسوند یکتا): dry run بدون خطا و بدون ذخیره
+  req GET /tasks; before=$(echo "$BODY" | jq length)
+  for t in tasks routines ideas full; do
+    f="$HERE/../docs/import-template/$t-template.json"; [ -f "$f" ] || { bad "$f نیست"; continue; }
+    req POST "/import?dry_run=1" "$(jq -c --arg t "$tag" '(.tasks[]?,.routines[]?,.ideas[]?) |= (.title += " " + $t | if has("id") then .id = "s'$$'" + .id else . end)' "$f")"
+    expect_code 200 "dry run قالب $t"
+    expect_jq '[.format,.dry,([.sections[]|.invalid]|add),(.reasons|length),(.warnings|length)]|map(tostring)|join(",")' 'template,true,0,0,0' "  بدون خطا و هشدار"
+  done
+  req GET /tasks; after=$(echo "$BODY" | jq length)
+  [ "$before" = "$after" ] && ok "dry run چیزی ذخیره نکرد" || bad "dry run ذخیره کرد ($before → $after)"
+
+  # ایمپورت واقعی قالب کامل و بررسی فیلدهای تازه
+  local full; full=$(jq -c --arg t "$tag" '(.tasks[]?,.routines[]?,.ideas[]?) |= (.title += " " + $t | if has("id") then .id = "s'$$'" + .id else . end)' "$HERE/../docs/import-template/full-template.json")
+  req POST /import "$full";                        expect_code 200 "ایمپورت واقعی قالب کامل"
+  expect_jq '[.sections.tasks.created,.sections.routines.created,.sections.ideas.created]|join(",")' '3,3,3' "۳ تسک، ۳ روتین، ۳ ایده"
+  req GET /tasks
+  echo "$BODY" | jq -r --arg t "$tag" '.[]|select(.title|endswith($t))|.id' | while read -r id; do echo "$id" >> /tmp/mlt_imp.$$; done
+  for id in $(cat /tmp/mlt_imp.$$ 2>/dev/null); do CREATED+=("$id"); done; rm -f /tmp/mlt_imp.$$
+  local t1; t1=$(echo "$BODY" | jq -c --arg t "$tag" '[.[]|select(.title=="نمونه: نوشتن متن معرفی ترک " + $t)][0]')
+  [ "$(echo "$t1" | jq -r '[.estimate_minutes,.estimate_original,.due_date,.priority,.bucket,.kind,.incomplete,(.assignees|join("+"))]|map(tostring)|join(",")')" = '45,45,2030-01-15,high,boost,new,false,you+maral' ] && ok "تسک ۱: تخمین، سررسید، اولویت، دسته، kind، مسئول‌ها" || bad "تسک ۱: $(echo "$t1" | jq -c '{estimate_minutes,due_date,priority,bucket,kind,assignees}')"
+  echo "$t1" | jq -e '.done_criteria|startswith("متن نهایی")' >/dev/null && ok "تسک ۱: معیار انجام" || bad "معیار انجام نیست"
+  echo "$t1" | jq -e '.code|test("^MH-[0-9]+$")' >/dev/null && ok "تسک ۱: کد ساخته شد ($(echo "$t1" | jq -r .code)، پیشوند از مسئول اصلی)" || bad "کد نیست"
+  echo "$BODY" | jq -e --arg t "$tag" '[.[]|select(.title=="نمونه: بررسی افکت‌های صوتی دسته‌ی اول " + $t)][0]|[.kind,.status,.owner,.code[0:3]]==["phase","in_progress","chakra","CH-"]' >/dev/null && ok "تسک ۲: phase، در حال انجام، مسئول چاکرا، کد CH-" || bad "تسک ۲"
+  echo "$BODY" | jq -e --arg t "$tag" '[.[]|select(.title|endswith($t))|select(.kind=="routine")]|length==3' >/dev/null && ok "سه ردیف روتین ساخته شد" || bad "روتین‌ها"
+  req GET /routines
+  echo "$BODY" | jq -e --arg t "$tag" '[.[]|select(.title|endswith($t))|{f:.frequency,e:.estimate_minutes,u:.recurrence_until,i:.incomplete}]|sort_by(.f)==[{"f":"daily","e":15,"u":null,"i":false},{"f":"monthly","e":120,"u":null,"i":false},{"f":"weekly","e":60,"u":"2030-12-31","i":false}]' >/dev/null && ok "روتین‌ها: تناوب، تخمین، recurrence_until، دوره‌ی جاری" || bad "روتین‌ها: $(echo "$BODY" | jq -c --arg t "$tag" '[.[]|select(.title|endswith($t))|{frequency,estimate_minutes,recurrence_until}]')"
+  echo "$BODY" | jq -e --arg t "$tag" '[.[]|select(.title|endswith($t))|.period_key]|all(test("^[0-9]{4}-"))' >/dev/null && ok "period_key پیش‌فرض = دوره‌ی جاری" || bad "period_key"
+  req GET "/tasks?kind=idea"
+  echo "$BODY" | jq -e --arg t "$tag" '[.[]|select(.title|endswith($t))|.meta.type]|sort==["sfx","sfx","track"]' >/dev/null && ok "ایده‌ها با type/category/tag" || bad "ایده‌ها"
+  req POST /import "$full"
+  expect_jq '[.sections.tasks.duplicate,.sections.routines.duplicate,.sections.ideas.duplicate,([.sections[]|.created]|add)]|join(",")' '3,3,3,0' "ایمپورت دوباره: همه تکراری (با id و بدون id)"
+
+  # خطاها با شماره‌ی ردیف
+  local bad_file; bad_file=$(jq -nc --arg t "$tag" --arg d "$(head -c 20001 /dev/zero | tr '\0' a)" --arg c "$(head -c 2001 /dev/zero | tr '\0' a)" '{format:"meloraw-tasks-import",version:1,_help:"x",tasks:[
+    {title:("ردیف یک "+$t),owner:"you",estimate_minutes:30,_note:"ignored"},
+    {title:("ردیف دو "+$t),owner:"you",colour:"red"},
+    {title:("ردیف سه "+$t),owner:"you",estimate_minutes:4},
+    {title:("ردیف چهار "+$t),owner:"you",estimate_minutes:"abc"},
+    {title:("ردیف پنج "+$t),owner:"you",due_date:"2030-13-40"},
+    {title:("ردیف شش "+$t),owner:"you",status:"weird"},
+    {title:("ردیف هفت "+$t)},
+    {title:("ردیف هشت "+$t),owner:"you",assignees:["zzz"]},
+    {title:("ردیف نه "+$t),owner:"you",description:$d},
+    {title:("ردیف ده "+$t),owner:"you",done_criteria:$c},
+    {title:("ردیف یازده "+$t),owner:"you",kind:"routine"},
+    {title:("ردیف دوازده "+$t),owner:"you",code:"MH-999"},
+    "not an object",
+    {title:"",owner:"you"},
+    {title:("ردیف یک "+$t),owner:"you"}]}')
+  req POST "/import?dry_run=1" "$bad_file";        expect_code 200 "dry run با ردیف‌های معیوب خطا نمی‌دهد، گزارش می‌دهد"
+  expect_jq '[.sections.tasks.created,.sections.tasks.invalid,.sections.tasks.duplicate]|join(",")' '1,13,1' "۱ سالم، ۱۳ معیوب، ۱ تکراری درون فایل"
+  expect_jq '[.reasons[]|.row]|join(",")' '2,3,4,5,6,7,8,9,10,11,12,13,14' "شماره‌ی ردیف خطاها (از ۱)"
+  expect_jq '.reasons[0].reason|contains("colour")' 'true' "ردیف ۲: نام فیلد ناشناخته آمده"
+  expect_jq '.reasons[1].reason|contains("estimate_minutes")' 'true' "ردیف ۳: estimate_minutes"
+  expect_jq '.reasons[3].reason|contains("due_date")' 'true' "ردیف ۵: due_date"
+  expect_jq '.reasons[4].reason|contains("status")' 'true' "ردیف ۶: status و مقدارهای مجاز"
+  expect_jq '.reasons[5].reason|contains("owner")' 'true' "ردیف ۷: owner"
+  expect_jq '.reasons[6].reason|contains("assignees")' 'true' "ردیف ۸: assignees"
+  expect_jq '.reasons[7].reason|contains("20000")' 'true' "ردیف ۹: شرح بیش از ۲۰۰۰۰"
+  expect_jq '.reasons[8].reason|contains("2000")' 'true' "ردیف ۱۰: معیار بیش از ۲۰۰۰"
+  expect_jq '.reasons[9].reason|contains("kind")' 'true' "ردیف ۱۱: kind"
+  expect_jq '.reasons[10].reason|contains("code")' 'true' "ردیف ۱۲: code (ساخته می‌شود، در فایل نیست) ناشناخته است"
+  expect_jq '.reasons[11].reason|contains("شیء")' 'true' "ردیف ۱۳: ردیف شیء نیست"
+  req GET /tasks; [ "$(echo "$BODY" | jq --arg t "$tag" '[.[]|select(.title|startswith("ردیف") and endswith($t))]|length')" = 0 ] && ok "dry run هیچ‌کدام را ذخیره نکرد" || bad "dry run ذخیره کرد"
+  req POST /import "$bad_file";                    expect_code 200 "ایمپورت واقعی همان فایل"
+  expect_jq '[.sections.tasks.created,.sections.tasks.invalid]|join(",")' '1,13' "فقط ردیف سالم وارد شد؛ معیوب‌ها رد شدند و گزارش شدند"
+  req GET /tasks; echo "$BODY" | jq -r --arg t "$tag" '.[]|select(.title|startswith("ردیف") and endswith($t))|.id' | while read -r id; do echo "$id" >> /tmp/mlt_imp.$$; done
+  for id in $(cat /tmp/mlt_imp.$$ 2>/dev/null); do CREATED+=("$id"); done; rm -f /tmp/mlt_imp.$$
+  [ "$(echo "$BODY" | jq --arg t "$tag" '[.[]|select(.title|startswith("ردیف") and endswith($t))]|length')" = 1 ] && ok "فقط «ردیف یک» در دیتابیس است" || bad "تعداد ردیف‌های واردشده"
+
+  # فایل قدیمی (بدون format): فیلد ناشناخته فقط هشدار است
+  req POST "/import?dry_run=1" "$(jq -nc --arg t "$tag" '{tasks:[{id:"old-'$$'",source:"added",owner:"you",title:("قدیمی "+$t),extra_field:1}]}')"
+  expect_jq '[.format,.sections.tasks.created,.sections.tasks.invalid,(.warnings|length),.warnings[0].row]|map(tostring)|join(",")' 'legacy,1,0,1,1' "فایل قدیمی: ردیف می‌ماند، فقط هشدار با شماره‌ی ردیف"
+  # کلیدهای _ نادیده گرفته می‌شوند؛ ساختار نادرست
+  req POST "/import?dry_run=1" '{"format":"meloraw-tasks-import","version":1,"_a":1,"tasks":[{"title":"x","owner":"you","_b":2}]}'
+  expect_jq '[.sections.tasks.created,(.reasons|length),(.warnings|length)]|join(",")' '1,0,0' "کلیدهای _ در سطح فایل و ردیف نادیده گرفته می‌شوند"
+  req POST /import '{"format":"meloraw-tasks-import","version":2,"tasks":[]}';  expect_code 400 "version پشتیبانی‌نشده"
+  req POST /import '{"format":"meloraw-tasks-import","version":1,"tasks":"x"}'; expect_code 400 "بخش tasks آرایه نیست"
+  req POST /import '{"format":"meloraw-tasks-import","version":1,"foo":[]}';    expect_code 400 "هیچ بخشی نیست"
+  req POST /import "$(jq -nc '{format:"meloraw-tasks-import",version:1,ideas:[range(0;5001)|{title:"i\(.)"}]}')"; expect_code 413 "بیش از ۵۰۰۰ ردیف"
+  req POST /import '{"format":"meloraw-tasks-import","version":1,"tasks":[{"title":"x"}]}' -; expect_code 401 "import بدون توکن"
+}
+
 # هدرهای امنیتی/کش روی همه‌ی پاسخ‌های REST افزونه (موفق، خطا، بدون توکن)
 expect_hdr() { echo "$HDRS" | grep -qiE "^$1: .*$2" && ok "$3" || bad "$3 (هدر $1 نیست)"; }
 run_headers() {
@@ -572,8 +678,8 @@ run_ratelimit() {
 
 case "$SECTION" in
   auth) run_auth ;; tasks) run_tasks ;; comments) run_comments ;;
-  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; timer) run_timer ;; score) run_score ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
-  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_timer; run_score; run_headers; run_scope; run_export; run_hidden ;;
+  flag) run_flag ;; status) run_status ;; routines) run_routines ;; notify) run_notify ;; fields) run_fields ;; estimate) run_estimate ;; timer) run_timer ;; score) run_score ;; import) run_import ;; headers) run_headers ;; scope) run_scope ;; export) run_export ;; ratelimit) run_ratelimit ;; hidden) run_hidden ;;
+  all) run_auth; run_tasks; run_comments; run_flag; run_status; run_routines; run_notify; run_fields; run_estimate; run_timer; run_score; run_import; run_headers; run_scope; run_export; run_hidden ;;
   *) echo "بخش نامعتبر: $SECTION"; exit 2 ;;
 esac
 

@@ -1,0 +1,33 @@
+{
+    "format": "meloraw-tasks-import",
+    "version": 1,
+    "_help": "نمونه‌ی ساختگی. مقدارها را با داده‌ی خودت عوض کن؛ کلیدهایی که با _ شروع می‌شوند نادیده گرفته می‌شوند.",
+    "ideas": [
+        {
+            "id": "demo-i1",
+            "title": "نمونه: ترک ملایم با پیانو و باران",
+            "description": "",
+            "type": "track",
+            "category": "آرام",
+            "tag": "piano",
+            "status": "open"
+        },
+        {
+            "id": "demo-i2",
+            "title": "نمونه: صدای قدم روی برف",
+            "description": "",
+            "type": "sfx",
+            "category": "محیط",
+            "tag": "snow",
+            "status": "open"
+        },
+        {
+            "title": "نمونه: ایده بدون شناسه",
+            "description": "",
+            "type": "sfx",
+            "category": "محیط",
+            "tag": "",
+            "status": "open"
+        }
+    ]
+}
