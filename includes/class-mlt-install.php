@@ -5,7 +5,7 @@ if (!defined('ABSPATH')) {
 
 class MLT_Install
 {
-    const DB_VERSION = '1';
+    const DB_VERSION = '2';
 
     public static function activate()
     {
@@ -33,6 +33,7 @@ class MLT_Install
 
         dbDelta("CREATE TABLE {$p}mlt_tasks (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  legacy_id varchar(64) DEFAULT NULL,
   title varchar(255) NOT NULL,
   description longtext NOT NULL,
   status varchar(20) NOT NULL DEFAULT 'open',
@@ -43,11 +44,13 @@ class MLT_Install
   recurrence varchar(10) NOT NULL DEFAULT 'none',
   period_key varchar(20) DEFAULT NULL,
   source_comment_id bigint(20) unsigned DEFAULT NULL,
+  meta json DEFAULT NULL,
   created_by bigint(20) unsigned NOT NULL DEFAULT 0,
   created_at datetime NOT NULL,
   updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (id),
+  UNIQUE KEY legacy_id (legacy_id),
   KEY status (status),
   KEY owner (owner),
   KEY kind_period (kind,period_key)

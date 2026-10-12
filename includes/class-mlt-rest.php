@@ -80,6 +80,7 @@ class MLT_REST
         if ($row['source_comment_id'] !== null) {
             $row['source_comment_id'] = (int) $row['source_comment_id'];
         }
+        $row['meta'] = $row['meta'] === null ? null : json_decode($row['meta'], true);
         return $row;
     }
 }

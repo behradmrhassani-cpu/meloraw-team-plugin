@@ -1,53 +1,56 @@
-/* رنگ‌ها را با رنگ‌های سایت جایگزین کنید */
+/* رنگ‌های سایت. برای تغییر تم فقط همین بخش را عوض کنید. */
+:root {
+  --bg: #0b0c0e;      /* پس‌زمینه */
+  --raised: #131417;  /* کارت‌ها و بخش‌های بالارفته */
+  --line: #232529;    /* خط‌ها و حاشیه‌ها */
+  --ink: #eef0f2;     /* متن اصلی */
+  --dim: #9aa0a8;     /* متن فرعی */
+  --gold: #f2a83c;    /* رنگ اصلی: دکمه‌ها، تیترها، اولویت بالا */
+  --cyan: #33d1c9;    /* رنگ دوم: مثلاً مسئول اتوماسیون یا لینک‌ها */
+  --red: #e5484d;     /* ستون «مانع» (در رنگ‌های سایت نبود) */
+  --green: #46a758;   /* وضعیت «انجام‌شده» (در رنگ‌های سایت نبود) */
+  --font-head: Rajdhani, Vazirmatn, Tahoma, sans-serif;
+  --font-body: Manrope, Vazirmatn, Tahoma, sans-serif;
+}
+
 .mlt {
-  --mlt-bg: #0e0f13;
-  --mlt-surface: #171920;
-  --mlt-surface-2: #20232c;
-  --mlt-border: #2b2f3a;
-  --mlt-text: #e8e9ee;
-  --mlt-muted: #9298a8;
-  --mlt-accent: #8b5cf6;
-  --mlt-blocker: #ef4444;
-  --mlt-boost: #f59e0b;
-  --mlt-normal: #3b82f6;
-  --mlt-done: #22c55e;
-  --mlt-progress: #eab308;
-  font-family: Vazirmatn, Vazir, Tahoma, sans-serif;
-  background: var(--mlt-bg);
-  color: var(--mlt-text);
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--ink);
   margin: 0 0 0 -20px;
   padding: 24px;
   min-height: calc(100vh - 32px);
   box-sizing: border-box;
 }
 .mlt * { box-sizing: border-box; }
-.mlt h1, .mlt h2, .mlt h3 { color: var(--mlt-text); font-family: inherit; margin: 0; }
+.mlt h1, .mlt h2, .mlt h3 { font-family: var(--font-head); color: var(--ink); margin: 0; }
+.mlt h1, .mlt h2 { color: var(--gold); }
 .mlt-head { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-.mlt-head h1 { font-size: 22px; }
+.mlt-head h1 { font-size: 24px; }
 .mlt-filters { display: flex; gap: 8px; flex-wrap: wrap; }
 .mlt-filters select, .mlt-btn {
-  background: var(--mlt-surface-2); color: var(--mlt-text);
-  border: 1px solid var(--mlt-border); border-radius: 8px;
+  background: var(--raised); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px;
   padding: 6px 12px; font-family: inherit; min-height: 36px;
 }
-.mlt-btn { background: var(--mlt-accent); border-color: var(--mlt-accent); cursor: pointer; }
+.mlt-btn { background: var(--gold); border-color: var(--gold); color: var(--bg); font-weight: 600; cursor: pointer; }
 .mlt-btn:hover { filter: brightness(1.1); }
 .mlt-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
 @media (max-width: 1000px) { .mlt-board { grid-template-columns: 1fr; } }
-.mlt-col { background: var(--mlt-surface); border: 1px solid var(--mlt-border); border-radius: 12px; padding: 16px; border-top: 3px solid var(--c); }
-.mlt-col--blocker { --c: var(--mlt-blocker); }
-.mlt-col--boost { --c: var(--mlt-boost); }
-.mlt-col--normal { --c: var(--mlt-normal); }
-.mlt-col h2 { font-size: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; }
-.mlt-count { color: var(--mlt-muted); font-weight: normal; }
-.mlt-empty { color: var(--mlt-muted); }
-.mlt-card { background: var(--mlt-surface-2); border: 1px solid var(--mlt-border); border-radius: 10px; padding: 12px; margin-bottom: 10px; border-right: 3px solid var(--mlt-muted); }
-.mlt-card h3 { font-size: 14px; line-height: 1.7; }
-.mlt-card p { color: var(--mlt-muted); font-size: 13px; line-height: 1.8; margin: 6px 0 0; }
-.mlt-status--done { border-right-color: var(--mlt-done); opacity: .7; }
+.mlt-col { background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 16px; border-top: 3px solid var(--c); }
+.mlt-col--blocker { --c: var(--red); }
+.mlt-col--boost { --c: var(--gold); }
+.mlt-col--normal { --c: var(--cyan); }
+.mlt-col h2 { font-size: 18px; margin-bottom: 12px; display: flex; justify-content: space-between; }
+.mlt-count { color: var(--dim); font-weight: normal; }
+.mlt-empty { color: var(--dim); }
+.mlt-card { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; border-right: 3px solid var(--line); }
+.mlt-card h3 { font-size: 15px; line-height: 1.7; }
+.mlt-card p { color: var(--dim); font-size: 13px; line-height: 1.8; margin: 6px 0 0; }
+.mlt-status--done { border-right-color: var(--green); opacity: .65; }
 .mlt-status--done h3 { text-decoration: line-through; }
-.mlt-status--in_progress { border-right-color: var(--mlt-progress); }
+.mlt-status--in_progress { border-right-color: var(--gold); }
 .mlt-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-.mlt-tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--mlt-bg); color: var(--mlt-muted); border: 1px solid var(--mlt-border); }
-.mlt-prio--high { color: var(--mlt-blocker); border-color: currentColor; }
-.mlt-prio--med { color: var(--mlt-boost); border-color: currentColor; }
+.mlt-tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--raised); color: var(--dim); border: 1px solid var(--line); }
+.mlt-prio--high { color: var(--gold); border-color: currentColor; }
+.mlt-owner--auto { color: var(--cyan); border-color: currentColor; }

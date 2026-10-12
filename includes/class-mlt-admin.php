@@ -89,7 +89,7 @@ class MLT_Admin
                                     <p><?php echo esc_html(wp_trim_words($t['description'], 30)); ?></p>
                                 <?php endif; ?>
                                 <div class="mlt-meta">
-                                    <span class="mlt-tag"><?php echo esc_html(self::label('owner', $t['owner'])); ?></span>
+                                    <span class="mlt-tag mlt-owner--<?php echo esc_attr($t['owner']); ?>"><?php echo esc_html(self::label('owner', $t['owner'])); ?></span>
                                     <span class="mlt-tag mlt-prio--<?php echo esc_attr($t['priority']); ?>"><?php echo esc_html(self::label('priority', $t['priority'])); ?></span>
                                     <span class="mlt-tag mlt-st"><?php echo esc_html(self::label('status', $t['status'])); ?></span>
                                 </div>
