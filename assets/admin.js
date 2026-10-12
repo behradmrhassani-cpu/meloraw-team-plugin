@@ -73,3 +73,15 @@
   tick();
   setInterval(tick, 1000);
 })();
+
+/* Timer bar: the net time of a running timer counts up in the browser (the server number is the starting point). */
+(function () {
+  var el = document.querySelector('.mlt-timer-net[data-running="1"]');
+  if (!el) return;
+  var base = parseInt(el.dataset.seconds, 10), t0 = Date.now();
+  var two = function (n) { return (n < 10 ? '0' : '') + n; };
+  setInterval(function () {
+    var s = base + Math.floor((Date.now() - t0) / 1000);
+    el.textContent = two(Math.floor(s / 3600)) + ':' + two(Math.floor(s % 3600 / 60)) + ':' + two(s % 60);
+  }, 1000);
+})();

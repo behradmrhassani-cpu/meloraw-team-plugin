@@ -113,6 +113,36 @@ class MLT_Settings
             unset($new['identity_map']);
         }
 
+        // peak-energy hour per person (UTC hour 0-23): the panel shows a hint during it
+        $hours = [];
+        $posted_hours = isset($_POST['peak']) && is_array($_POST['peak']) ? wp_unslash($_POST['peak']) : [];
+        foreach (MLT_Identity::slugs() as $slug) {
+            $h = isset($posted_hours[$slug]) && is_string($posted_hours[$slug]) ? $posted_hours[$slug] : '';
+            if ($h !== '' && ctype_digit($h) && (int) $h <= 23) {
+                $hours[$slug] = (int) $h;
+            }
+        }
+        if ($hours) {
+            $new['peak_hours'] = $hours;
+        } else {
+            unset($new['peak_hours']);
+        }
+
+        // announcement for everybody, inside the panel only
+        $text = isset($_POST['announcement_text']) && is_string($_POST['announcement_text']) ? trim(sanitize_textarea_field(wp_unslash($_POST['announcement_text']))) : '';
+        $expires = isset($_POST['announcement_expires']) && is_string($_POST['announcement_expires']) ? MLT_Taskmeta::date(sanitize_text_field(wp_unslash($_POST['announcement_expires']))) : null;
+        if ($expires === false) {
+            $errors[] = 'تاریخ انقضای اعلان باید به شکل YYYY-MM-DD باشد.';
+            $expires = null;
+        }
+        if (mb_strlen($text) > 500) {
+            $errors[] = 'متن اعلان بیش از ۵۰۰ نویسه است.';
+        } elseif ($text !== '') {
+            $new['announcement'] = ['text' => $text, 'expires' => $expires, 'active' => !empty($_POST['announcement_active']) ? 1 : 0];
+        } else {
+            unset($new['announcement']);
+        }
+
         if (!empty($_POST[self::DELETE_FLAG])) {
             $new[self::DELETE_FLAG] = '1';
         } else {
@@ -122,7 +152,7 @@ class MLT_Settings
         if ($errors) {
             MLT_Admin::redirect_with(['type' => 'error', 'msg' => 'ذخیره نشد: ' . implode(' ', $errors)], MLT_Admin::SETTINGS_SLUG, [], '');
         }
-        $changed = array_values(array_filter(array_merge(array_keys(self::FIELDS), [self::DELETE_FLAG, 'identity_map']), function ($f) use ($old, $new) {
+        $changed = array_values(array_filter(array_merge(array_keys(self::FIELDS), [self::DELETE_FLAG, 'identity_map', 'peak_hours', 'announcement']), function ($f) use ($old, $new) {
             return ($old[$f] ?? null) !== ($new[$f] ?? null);
         }));
         if ($changed) {
@@ -187,6 +217,34 @@ class MLT_Settings
                         </tr>
                     <?php endforeach; ?>
                 </table>
+                <h2 class="mlt-sub">ساعت اوج انرژی</h2>
+                <p class="mlt-hint">ساعت (۰ تا ۲۳، به وقت UTC) که هر نفر معمولاً بهترین تمرکز را دارد. در همان ساعت یک پیام داخل پنل (نه تلگرام) یادآوری می‌کند که وقت کار روی «تمرکز اصلی» است.</p>
+                <?php $peak = MLT_Settings::option('peak_hours'); $peak = is_array($peak) ? $peak : []; ?>
+                <table class="mlt-idtable">
+                    <?php foreach (MLT_Admin::LABELS['owner'] as $slug => $label) : ?>
+                        <tr>
+                            <th><?php echo esc_html($label); ?></th>
+                            <td>
+                                <select name="peak[<?php echo esc_attr($slug); ?>]" aria-label="ساعت اوج <?php echo esc_attr($label); ?>">
+                                    <option value="">— تعیین نشده</option>
+                                    <?php for ($h = 0; $h < 24; $h++) : ?>
+                                        <option value="<?php echo (int) $h; ?>"<?php selected(isset($peak[$slug]) ? (int) $peak[$slug] : -1, $h); ?>><?php echo esc_html(sprintf('%02d:00 UTC', $h)); ?></option>
+                                    <?php endfor; ?>
+                                </select>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </table>
+                <h2 class="mlt-sub">اعلان سراسری</h2>
+                <p class="mlt-hint">یک پیام که بالای همه‌ی صفحه‌های افزونه برای همه دیده می‌شود (فقط داخل پنل؛ به تلگرام نمی‌رود). با تاریخ انقضا خودش محو می‌شود.</p>
+                <?php $ann = MLT_Settings::option('announcement'); $ann = is_array($ann) ? $ann : []; ?>
+                <label class="mlt-field">متن اعلان (حداکثر ۵۰۰ نویسه؛ خالی = بدون اعلان)
+                    <textarea name="announcement_text" rows="3" maxlength="500"><?php echo esc_textarea($ann['text'] ?? ''); ?></textarea>
+                </label>
+                <label class="mlt-field">تاریخ انقضا (اختیاری، YYYY-MM-DD به وقت UTC)
+                    <input type="date" name="announcement_expires" dir="ltr" value="<?php echo esc_attr($ann['expires'] ?? ''); ?>">
+                </label>
+                <label class="mlt-check"><input type="checkbox" name="announcement_active" value="1"<?php checked(!empty($ann['active'])); ?>> فعال باشد</label>
                 <h2 class="mlt-sub">حذف افزونه</h2>
                 <label class="mlt-check"><input type="checkbox" name="delete_on_uninstall" value="1"<?php checked(!empty($s[self::DELETE_FLAG])); ?>> هنگام حذف افزونه از وردپرس، همه‌ی داده‌ها (تسک‌ها، کامنت‌ها، لاگ و تنظیمات) برای همیشه پاک شود</label>
                 <p class="mlt-hint">پیش‌فرض خاموش است: با حذف افزونه هیچ داده‌ای پاک نمی‌شود. اگر روشنش کنی، «حذف» افزونه از صفحه‌ی افزونه‌های وردپرس بدون هیچ تأیید دیگری همه‌چیز را پاک می‌کند؛ قبلش از <code dir="ltr">GET /export</code> خروجی بگیر.</p>

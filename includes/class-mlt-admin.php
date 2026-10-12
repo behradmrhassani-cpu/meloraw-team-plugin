@@ -12,7 +12,9 @@ class MLT_Admin
     const REPORTS_SLUG = 'meloraw-tasks-reports';
     const LOG_SLUG = 'meloraw-tasks-log';
     const SETTINGS_SLUG = 'meloraw-tasks-settings';
-    const PAGES = [self::SLUG, self::IMPORT_SLUG, self::ROUTINES_SLUG, self::IDEAS_SLUG, self::REPORTS_SLUG, self::LOG_SLUG, self::SETTINGS_SLUG];
+    const TODAY_SLUG = 'meloraw-tasks-today';
+    const TIME_SLUG = 'meloraw-tasks-time';
+    const PAGES = [self::SLUG, self::TODAY_SLUG, self::TIME_SLUG, self::IMPORT_SLUG, self::ROUTINES_SLUG, self::IDEAS_SLUG, self::REPORTS_SLUG, self::LOG_SLUG, self::SETTINGS_SLUG];
 
     const LABELS = [
         'status'   => ['open' => 'انجام نشده', 'in_progress' => 'در حال انجام', 'done' => 'انجام‌شده'],
@@ -81,17 +83,10 @@ class MLT_Admin
         wp_enqueue_script('mlt-admin', plugins_url('assets/admin.js', MLT_PLUGIN_FILE), [], filemtime(MLT_PLUGIN_DIR . 'assets/admin.js') ?: MLT_VERSION, true);
     }
 
-    /** Fixed bar on every plugin page: today's date and a live clock, both UTC (the site's publishing time). */
+    /** Everything above the page content: clock bar, announcement, timer bar, hints (see MLT_Panel). */
     public static function topbar()
     {
-        $now = MLT_Time::now();
-        ?>
-        <div class="mlt-topbar" data-now="<?php echo esc_attr($now->getTimestamp() * 1000); ?>">
-            <span class="mlt-clock-date" dir="ltr"><?php echo esc_html($now->format('D Y-m-d')); ?></span>
-            <span class="mlt-clock-time" dir="ltr"><?php echo esc_html($now->format('H:i')); ?> UTC</span>
-            <span class="mlt-clock-note">همه‌ی زمان‌ها میلادی و UTC+0 هستند — همان زمان انتشار پست‌های سایت</span>
-        </div>
-        <?php
+        MLT_Panel::render();
     }
 
     public static function render_board()
