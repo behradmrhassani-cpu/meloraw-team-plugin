@@ -32,7 +32,9 @@ class MLT_Admin
         if ($hook !== 'toplevel_page_' . self::SLUG) {
             return;
         }
-        wp_enqueue_style('mlt-admin', plugins_url('assets/admin.css', MLT_PLUGIN_FILE), [], MLT_VERSION);
+        // Version by file mtime so browser/LiteSpeed/Cloudflare caches refetch the CSS after every deploy.
+        $ver = filemtime(MLT_PLUGIN_DIR . 'assets/admin.css') ?: MLT_VERSION;
+        wp_enqueue_style('mlt-admin', plugins_url('assets/admin.css', MLT_PLUGIN_FILE), [], $ver);
     }
 
     public static function render_board()
