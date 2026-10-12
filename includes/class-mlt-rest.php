@@ -176,7 +176,8 @@ class MLT_REST
     {
         global $wpdb;
         $id = (int) $request['id'];
-        if (!self::find_task($id)) {
+        $old = self::find_task($id);
+        if (!$old) {
             return self::not_found();
         }
         $data = self::task_fields($request);
@@ -191,6 +192,9 @@ class MLT_REST
         $data['updated_at'] = current_time('mysql', true);
         if ($wpdb->update("{$wpdb->prefix}mlt_tasks", $data, ['id' => $id]) === false) {
             return self::db_error();
+        }
+        if (isset($data['status']) && $data['status'] !== $old['status']) {
+            self::log_activity($id, 'status_change', sprintf('«%s»: %s → %s', $old['title'], $old['status'], $data['status']));
         }
         return self::format_task(self::find_task($id));
     }
@@ -348,6 +352,20 @@ class MLT_REST
         }
         $item = WP_Application_Passwords::get_user_application_password(get_current_user_id(), $uuid);
         return $item ? mb_substr(sanitize_text_field($item['name']), 0, 100) : null;
+    }
+
+    /** Who did what: the user, plus the Application Password name when the call came from an agent. */
+    private static function log_activity($task_id, $action, $summary)
+    {
+        global $wpdb;
+        $wpdb->insert("{$wpdb->prefix}mlt_activity_log", [
+            'task_id'    => $task_id,
+            'user'       => get_current_user_id(),
+            'agent'      => self::current_agent(),
+            'action'     => $action,
+            'summary'    => $summary,
+            'created_at' => current_time('mysql', true),
+        ]);
     }
 
     // ---- errors ----

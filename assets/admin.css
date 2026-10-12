@@ -77,3 +77,14 @@
 .mlt-del { margin: 10px 0 0; }
 .mlt-del-btn { background: transparent; color: var(--red); border: 1px solid var(--line); border-radius: 6px; padding: 2px 10px; font-family: inherit; font-size: 12px; cursor: pointer; }
 .mlt-del-btn:hover { border-color: var(--red); background: rgba(229, 72, 77, .1); }
+
+/* ویرایش و تغییر سریع وضعیت روی کارت */
+.mlt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.mlt-actions .mlt-del, .mlt-actions .mlt-status { margin: 0; }
+.mlt-edit-btn, .mlt-cancel-btn { background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 2px 10px; font-family: inherit; font-size: 12px; cursor: pointer; }
+.mlt-edit-btn:hover, .mlt-cancel-btn:hover { border-color: var(--gold); color: var(--gold); }
+.mlt-editing .mlt-edit-btn { border-color: var(--gold); color: var(--gold); }
+.mlt .mlt-status select { background: var(--raised); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; min-height: 26px; font-family: inherit; font-size: 12px; }
+.mlt-edit-form { display: none; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mlt-editing .mlt-edit-form { display: grid; }
+@media (max-width: 520px) { .mlt-edit-form { grid-template-columns: 1fr 1fr; } }
