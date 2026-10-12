@@ -116,6 +116,7 @@ class MLT_Settings
         };
         ?>
         <div class="mlt" dir="rtl">
+            <?php MLT_Admin::topbar(); ?>
             <header class="mlt-head">
                 <h1>تنظیمات</h1>
             </header>

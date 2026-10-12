@@ -90,6 +90,7 @@ class MLT_Reports
         cache_users(array_unique(array_map('intval', wp_list_pluck($rows, 'author'))));
         ?>
         <div class="mlt" dir="rtl">
+            <?php MLT_Admin::topbar(); ?>
             <header class="mlt-head">
                 <h1>گزارش‌ها</h1>
             </header>

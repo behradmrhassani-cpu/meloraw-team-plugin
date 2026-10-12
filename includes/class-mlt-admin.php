@@ -78,9 +78,20 @@ class MLT_Admin
         // Version by file mtime so browser/LiteSpeed/Cloudflare caches refetch the CSS after every deploy.
         $ver = filemtime(MLT_PLUGIN_DIR . 'assets/admin.css') ?: MLT_VERSION;
         wp_enqueue_style('mlt-admin', plugins_url('assets/admin.css', MLT_PLUGIN_FILE), [], $ver);
-        if ($page === self::SLUG) { // only the board has the "send to Telegram" forms
-            wp_enqueue_script('mlt-admin', plugins_url('assets/admin.js', MLT_PLUGIN_FILE), [], filemtime(MLT_PLUGIN_DIR . 'assets/admin.js') ?: MLT_VERSION, true);
-        }
+        wp_enqueue_script('mlt-admin', plugins_url('assets/admin.js', MLT_PLUGIN_FILE), [], filemtime(MLT_PLUGIN_DIR . 'assets/admin.js') ?: MLT_VERSION, true);
+    }
+
+    /** Fixed bar on every plugin page: today's date and a live clock, both UTC (the site's publishing time). */
+    public static function topbar()
+    {
+        $now = MLT_Time::now();
+        ?>
+        <div class="mlt-topbar" data-now="<?php echo esc_attr($now->getTimestamp() * 1000); ?>">
+            <span class="mlt-clock-date" dir="ltr"><?php echo esc_html($now->format('D Y-m-d')); ?></span>
+            <span class="mlt-clock-time" dir="ltr"><?php echo esc_html($now->format('H:i')); ?> UTC</span>
+            <span class="mlt-clock-note">همه‌ی زمان‌ها میلادی و UTC+0 هستند — همان زمان انتشار پست‌های سایت</span>
+        </div>
+        <?php
     }
 
     public static function render_board()
@@ -134,6 +145,7 @@ class MLT_Admin
         }
         ?>
         <div class="mlt" dir="rtl">
+            <?php MLT_Admin::topbar(); ?>
             <header class="mlt-head">
                 <h1>تسک‌های تیم MELORAW</h1>
                 <form method="get" class="mlt-filters">
@@ -208,7 +220,7 @@ class MLT_Admin
                                         </div>
                                     </form>
                                     <div class="mlt-comments">
-                                        <p class="mlt-tz">زمان‌ها به وقت <code dir="ltr"><?php echo esc_html(MLT_Time::ZONE); ?></code></p>
+                                        <p class="mlt-tz">زمان‌ها به وقت <code dir="ltr">UTC</code></p>
                                         <?php foreach ($list as $c) : $author = get_userdata((int) $c['author']); ?>
                                             <div class="mlt-comment<?php echo (int) $c['flagged'] ? ' mlt-comment--flagged' : ''; ?>">
                                                 <div class="mlt-c-head">
@@ -265,6 +277,7 @@ class MLT_Admin
         delete_transient(self::report_key());
         ?>
         <div class="mlt" dir="rtl">
+            <?php MLT_Admin::topbar(); ?>
             <header class="mlt-head">
                 <h1>ایمپورت از فایل JSON قدیمی</h1>
             </header>
@@ -582,14 +595,14 @@ class MLT_Admin
         $now = MLT_Time::now();
         ?>
         <div class="mlt" dir="rtl">
+            <?php MLT_Admin::topbar(); ?>
             <header class="mlt-head">
                 <h1>روتین‌ها</h1>
             </header>
             <?php self::render_notice(); ?>
             <p class="mlt-hint">
-                منطقه‌ی زمانی روتین‌ها: <code dir="ltr"><?php echo esc_html(MLT_Time::ZONE); ?></code>
-                (<code dir="ltr">UTC<?php echo esc_html($now->format('P')); ?></code>)، اکنون <code dir="ltr"><?php echo esc_html($now->format('Y-m-d H:i')); ?></code>.
-                با عوض‌شدن روز، هفته یا ماه به این وقت، وضعیت روتین‌ها خودکار از نو شروع می‌شود. منطقه‌ی زمانی سایت تغییری نمی‌کند.
+                <code dir="ltr">UTC+0</code> — همان زمان انتشار پست‌های سایت. اکنون <code dir="ltr"><?php echo esc_html($now->format('Y-m-d H:i')); ?> UTC</code>.
+                با عوض‌شدن روز، هفته یا ماه (به وقت UTC) وضعیت روتین‌ها خودکار از نو شروع می‌شود.
             </p>
             <?php foreach ($groups as $g) : ?>
                 <?php $done = count(array_filter($g['items'], function ($v) { return $v['status'] === 'done'; })); ?>
@@ -652,6 +665,7 @@ class MLT_Admin
         };
         ?>
         <div class="mlt" dir="rtl">
+            <?php MLT_Admin::topbar(); ?>
             <header class="mlt-head">
                 <h1>بانک ایده‌ها</h1>
             </header>

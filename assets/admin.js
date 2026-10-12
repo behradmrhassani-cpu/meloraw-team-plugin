@@ -56,3 +56,20 @@
     if (box) { refresh(box); }
   });
 })();
+
+/* Clock bar: starts from the server's time (data-now, ms since epoch) and ticks with the browser's clock.
+   Always UTC, Gregorian. */
+(function () {
+  var bar = document.querySelector('.mlt-topbar');
+  if (!bar) return;
+  var offset = parseInt(bar.dataset.now, 10) - Date.now();
+  var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var two = function (n) { return (n < 10 ? '0' : '') + n; };
+  function tick() {
+    var d = new Date(Date.now() + offset);
+    bar.querySelector('.mlt-clock-date').textContent = days[d.getUTCDay()] + ' ' + d.getUTCFullYear() + '-' + two(d.getUTCMonth() + 1) + '-' + two(d.getUTCDate());
+    bar.querySelector('.mlt-clock-time').textContent = two(d.getUTCHours()) + ':' + two(d.getUTCMinutes()) + ' UTC';
+  }
+  tick();
+  setInterval(tick, 1000);
+})();

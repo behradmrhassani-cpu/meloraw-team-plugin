@@ -84,7 +84,7 @@ class MLT_Log
         }
         if ($f['from'] !== '') {
             $where[] = 'created_at >= %s';
-            $args[] = MLT_Time::day_bounds($f['from'])[0]; // the day filter is a Tehran day, like the times shown
+            $args[] = MLT_Time::day_bounds($f['from'])[0]; // the day filter is a UTC day, like the times shown
         }
         if ($f['to'] !== '') {
             $where[] = 'created_at <= %s';
@@ -112,6 +112,7 @@ class MLT_Log
         };
         ?>
         <div class="mlt" dir="rtl">
+            <?php MLT_Admin::topbar(); ?>
             <header class="mlt-head">
                 <h1>لاگ فعالیت</h1>
             </header>

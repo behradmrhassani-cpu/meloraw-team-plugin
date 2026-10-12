@@ -191,3 +191,8 @@
 .mlt-actions .mlt-status, .mlt-actions .mlt-notify--inline { display: contents; }
 .mlt-actions .mlt-notify--inline .mlt-notify-body { flex-basis: 100%; }
 .mlt-actions .mlt-notify--inline .mlt-notify-toggle:checked ~ .mlt-notify-body { display: block; width: 100%; }
+
+.mlt-topbar { position: sticky; top: 32px; z-index: 5; display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; padding: 8px 16px; margin: 0 0 16px; background: var(--raised); border-bottom: 1px solid var(--line); font-size: 13px; }
+.mlt-clock-date, .mlt-clock-time { font-family: Rajdhani, Manrope, sans-serif; font-weight: 600; color: var(--ink); letter-spacing: .03em; }
+.mlt-clock-note { color: var(--dim); }
+@media (max-width: 782px) { .mlt-topbar { top: 46px; } }

@@ -4,35 +4,34 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * The one timezone the plugin works in: Tehran. Used for routine periods and for every time shown
- * in the panel. The site timezone stays UTC and is never read or changed; the database keeps UTC.
+ * The one clock of the plugin: UTC+0 (the time the site's posts are published in), Gregorian dates only.
+ * Used for routine periods, due dates, timers, scores and every time shown in the panel. The WordPress
+ * timezone setting is never read or changed; the database keeps UTC as well.
  */
 class MLT_Time
 {
-    const ZONE = 'Asia/Tehran';
-
-    private static function zone()
-    {
-        return new DateTimeZone(self::ZONE);
-    }
+    const ZONE = 'UTC';
 
     public static function now()
     {
-        return new DateTimeImmutable('now', self::zone());
+        return new DateTimeImmutable('now', new DateTimeZone(self::ZONE));
     }
 
-    /** A UTC "Y-m-d H:i:s" value from the database, shown in Tehran time. */
-    public static function format($utc, $format = 'Y/m/d H:i')
+    /** Today's date, "Y-m-d". */
+    public static function today()
     {
-        return (new DateTimeImmutable((string) $utc, new DateTimeZone('UTC')))->setTimezone(self::zone())->format($format);
+        return self::now()->format('Y-m-d');
     }
 
-    /** UTC bounds (as database strings) of a Tehran calendar day "Y-m-d". */
+    /** A "Y-m-d H:i:s" value from the database, shown as UTC. */
+    public static function format($utc, $format = 'Y-m-d H:i')
+    {
+        return (new DateTimeImmutable((string) $utc, new DateTimeZone(self::ZONE)))->format($format);
+    }
+
+    /** Database bounds of a calendar day "Y-m-d". */
     public static function day_bounds($date)
     {
-        $utc = new DateTimeZone('UTC');
-        $start = new DateTimeImmutable($date . ' 00:00:00', self::zone());
-        $end = new DateTimeImmutable($date . ' 23:59:59', self::zone());
-        return [$start->setTimezone($utc)->format('Y-m-d H:i:s'), $end->setTimezone($utc)->format('Y-m-d H:i:s')];
+        return [$date . ' 00:00:00', $date . ' 23:59:59'];
     }
 }
