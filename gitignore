@@ -1,0 +1,26 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+wp-config.php
+*.secret
+*.key
+
+# Local database and dumps
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sql
+*.sql.gz
+exports/
+
+# Editor and OS
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db
+
+# Dependencies and build output
+vendor/
+node_modules/

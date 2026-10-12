@@ -1,0 +1,20 @@
+<?php
+/**
+ * Plugin Name:       MELORAW Team Tasks
+ * Description:       تسک‌بورد داخلی تیم MELORAW. فقط برای ادمین‌ها، با API برای ایجنت‌ها.
+ * Version:           0.1.0
+ * Requires PHP:      7.4
+ * Author:            MELORAW
+ * License:           Proprietary
+ * Text Domain:       meloraw-team-tasks
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+define('MLT_VERSION', '0.1.0');
+define('MLT_PLUGIN_FILE', __FILE__);
+define('MLT_PLUGIN_DIR', plugin_dir_path(__FILE__));
+
+// TODO: include classes from includes/ as they are built (DB, REST, admin, telegram).
