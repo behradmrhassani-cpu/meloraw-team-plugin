@@ -20,6 +20,8 @@ define('MLT_TELEGRAM_THREAD_ID', 'thread id');
 ## امکانات
 هویت اعضا و برد «من/همه»، کد تسک (`MH-1`)، چند مسئول، زمان تقریبی ثابت با درخواست تمدید، زمان‌سنج با پاز، امتیاز، «امروز من»، گزارش زمان و تحویل به ایجنت: [docs/features.md](docs/features.md). متن آماده برای تکمیل تسک‌های قدیمی توسط ایجنت: [docs/agent-complete-tasks.md](docs/agent-complete-tasks.md). همه‌ی زمان‌ها میلادی و UTC هستند.
 
+ایمپورت با قالب نمونه: [docs/import-template/README.md](docs/import-template/README.md). تست از صفر تا صد برای آدم غیرفنی: [docs/test-checklist.md](docs/test-checklist.md). صفحه‌ی «بررسی سلامت» در پنل مشکل نصب/سرور را با راه حل نشان می‌دهد.
+
 ## کش، هدرها و حذف افزونه
 - همه‌ی پاسخ‌های REST و صفحه‌های ادمین افزونه هدر `noindex` و `no-store` دارند؛ استثنای کش لازم در LiteSpeed و Cloudflare: [docs/cache-exclusions.md](docs/cache-exclusions.md).
 - هر کاربر در دقیقه حداکثر ۱۲۰ درخواست REST می‌تواند بزند؛ بیشتر از آن ۴۲۹ با `Retry-After` می‌گیرد.
