@@ -54,3 +54,21 @@
 .mlt-tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--raised); color: var(--dim); border: 1px solid var(--line); }
 .mlt-prio--high { color: var(--gold); border-color: currentColor; }
 .mlt-owner--auto { color: var(--cyan); border-color: currentColor; }
+
+/* فرم افزودن تسک */
+.mlt-add { margin-bottom: 24px; }
+.mlt-add summary { display: inline-block; list-style: none; }
+.mlt-add summary::-webkit-details-marker { display: none; }
+.mlt-form { margin-top: 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1000px) { .mlt-form { grid-template-columns: 1fr 1fr; } }
+.mlt-field { display: flex; flex-direction: column; gap: 6px; color: var(--dim); font-size: 13px; }
+.mlt-field--wide { grid-column: 1 / -1; }
+.mlt .mlt-form input, .mlt .mlt-form textarea, .mlt .mlt-form select {
+  background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; font-family: inherit; font-size: 14px; max-width: none; width: 100%; box-shadow: none;
+}
+.mlt .mlt-form input:focus, .mlt .mlt-form textarea:focus, .mlt .mlt-form select:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }
+.mlt-notice { border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; border: 1px solid; }
+.mlt-notice--ok { color: var(--cyan); border-color: var(--cyan); }
+.mlt-notice--error { color: var(--red); border-color: var(--red); }
+.mlt-card--new { box-shadow: 0 0 0 1px var(--gold); }
