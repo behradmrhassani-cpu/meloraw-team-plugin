@@ -72,3 +72,8 @@
 .mlt-notice--ok { color: var(--cyan); border-color: var(--cyan); }
 .mlt-notice--error { color: var(--red); border-color: var(--red); }
 .mlt-card--new { box-shadow: 0 0 0 1px var(--gold); }
+
+/* دکمه‌ی حذف روی کارت */
+.mlt-del { margin: 10px 0 0; }
+.mlt-del-btn { background: transparent; color: var(--red); border: 1px solid var(--line); border-radius: 6px; padding: 2px 10px; font-family: inherit; font-size: 12px; cursor: pointer; }
+.mlt-del-btn:hover { border-color: var(--red); background: rgba(229, 72, 77, .1); }

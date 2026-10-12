@@ -19,6 +19,7 @@ class MLT_Admin
         add_action('admin_menu', [__CLASS__, 'menu']);
         add_action('admin_enqueue_scripts', [__CLASS__, 'assets']);
         add_action('admin_post_mlt_add_task', [__CLASS__, 'handle_add_task']);
+        add_action('admin_post_mlt_delete_task', [__CLASS__, 'handle_delete_task']);
     }
 
     public static function menu()
@@ -102,6 +103,14 @@ class MLT_Admin
                                     <span class="mlt-tag mlt-prio--<?php echo esc_attr($t['priority']); ?>"><?php echo esc_html(self::label('priority', $t['priority'])); ?></span>
                                     <span class="mlt-tag mlt-st"><?php echo esc_html(self::label('status', $t['status'])); ?></span>
                                 </div>
+                                <?php if (current_user_can(MLT_CAP)) : ?>
+                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mlt-del" onsubmit="return confirm('این تسک و کامنت‌هایش برای همیشه حذف می‌شود. مطمئنی؟');">
+                                        <input type="hidden" name="action" value="mlt_delete_task">
+                                        <input type="hidden" name="id" value="<?php echo (int) $t['id']; ?>">
+                                        <?php wp_nonce_field('mlt_delete_task_' . (int) $t['id']); ?>
+                                        <button type="submit" class="mlt-del-btn">حذف</button>
+                                    </form>
+                                <?php endif; ?>
                             </article>
                         <?php endforeach; ?>
                     </section>
@@ -163,6 +172,24 @@ class MLT_Admin
         }
         set_transient(self::notice_key(), $notice, MINUTE_IN_SECONDS);
         wp_safe_redirect(add_query_arg($args, admin_url('admin.php')));
+        exit;
+    }
+
+    public static function handle_delete_task()
+    {
+        if (!current_user_can(MLT_CAP)) {
+            wp_die('دسترسی ندارید.', '', ['response' => 403]);
+        }
+        $id = isset($_POST['id']) ? absint($_POST['id']) : 0;
+        check_admin_referer('mlt_delete_task_' . $id);
+
+        $response = rest_do_request(new WP_REST_Request('DELETE', '/' . MLT_REST::NS . '/tasks/' . $id));
+        $data = $response->get_data();
+        $notice = $response->is_error()
+            ? ['type' => 'error', 'msg' => 'حذف نشد: ' . ($data['message'] ?? '')]
+            : ['type' => 'ok', 'msg' => 'تسک حذف شد.'];
+        set_transient(self::notice_key(), $notice, MINUTE_IN_SECONDS);
+        wp_safe_redirect(add_query_arg('page', self::SLUG, admin_url('admin.php')));
         exit;
     }
 
