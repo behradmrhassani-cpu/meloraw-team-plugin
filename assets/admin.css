@@ -1,0 +1,345 @@
+/* رنگ‌های سایت. برای تغییر تم فقط همین بخش را عوض کنید. */
+:root {
+  --bg: #0b0c0e;      /* پس‌زمینه */
+  --raised: #131417;  /* کارت‌ها و بخش‌های بالارفته */
+  --line: #232529;    /* خط‌ها و حاشیه‌ها */
+  --ink: #eef0f2;     /* متن اصلی */
+  --dim: #9aa0a8;     /* متن فرعی */
+  --gold: #f2a83c;    /* تنها رنگ تأکید: دکمه‌ی اصلی، تیترها، برچسب‌ها */
+  --cyan: #33d1c9;    /* رنگ دوم سایت (فقط لینک و کد) */
+  --red: #e5484d;     /* خطا و «دیر شده» */
+  --green: #46a758;   /* وضعیت «انجام‌شده» */
+  --hover: #1b1d21;   /* پس‌زمینه‌ی هاور و فشردن (روشن‌تر از --raised) */
+  --gold-press: #d8922d; /* دکمه‌ی اصلی هنگام فشردن */
+  --cyan-hover: #7ae6e0; /* لینک در هاور */
+  --font-head: Rajdhani, Vazirmatn, Tahoma, sans-serif;
+  --font-body: Manrope, Vazirmatn, Tahoma, sans-serif;
+  --gap: 28px;
+}
+
+/* ---------- پایه ---------- */
+.mlt { font-family: var(--font-body); background: var(--bg); color: var(--ink); margin: 0 0 0 -20px; padding: 0 24px 40px; min-height: calc(100vh - 32px); box-sizing: border-box; line-height: 1.7; }
+.mlt * { box-sizing: border-box; }
+.mlt h1, .mlt h2, .mlt h3 { font-family: var(--font-head); margin: 0; }
+.mlt h1 { color: var(--ink); font-size: 24px; font-weight: 600; }
+.mlt h2 { color: var(--gold); font-size: 17px; font-weight: 600; }
+.mlt h3 { color: var(--ink); font-size: 15px; font-weight: 600; }
+.mlt a { color: var(--cyan); }
+.mlt-head { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; margin: 8px 0 var(--gap); }
+.mlt-head h1 { margin-inline-end: auto; }
+.mlt-count { color: var(--dim); font-weight: 400; font-size: 13px; }
+.mlt-empty, .mlt-hint { color: var(--dim); font-size: 13px; margin: 0; }
+.mlt-empty { margin-bottom: 12px; }
+.mlt-hint { line-height: 1.9; }
+.mlt-check { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 13px; }
+.mlt-sub { font-size: 17px; margin: 24px 0 8px; display: flex; align-items: center; gap: 10px; color: var(--gold); }
+.mlt code { background: var(--raised); color: var(--cyan); padding: 0 6px; border-radius: 4px; }
+
+/* ---------- دکمه‌ها (یک اندازه، دو سبک) ---------- */
+.mlt-btn, .mlt-filters select, .mlt .mlt-inline select { font-family: inherit; font-size: 13px; min-height: 34px; border-radius: 8px; padding: 0 14px; }
+.mlt-btn { background: var(--gold); border: 1px solid var(--gold); color: var(--bg); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; text-decoration: none; }
+.mlt-btn:hover { filter: brightness(1.08); }
+.mlt-btn--ghost { background: transparent; color: var(--ink); border-color: var(--line); font-weight: 400; }
+.mlt-btn--ghost:hover { border-color: var(--gold); color: var(--gold); filter: none; }
+.mlt-btn--sm { min-height: 28px; padding: 0 10px; font-size: 12px; }
+.mlt-btn[disabled] { opacity: .45; cursor: not-allowed; }
+.mlt-link-btn, .mlt-linkbtn { background: none; border: 0; color: var(--dim); font-family: inherit; font-size: 12px; cursor: pointer; padding: 2px 4px; }
+.mlt-link-btn:hover, .mlt-linkbtn:hover, .mlt-editing .mlt-link-btn:first-of-type { color: var(--gold); }
+.mlt-link-btn--danger:hover { color: var(--red); }
+.mlt-link-btn.mlt-has-flag { color: var(--gold); }
+.mlt-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.mlt-filters select { background: var(--raised); color: var(--ink); border: 1px solid var(--line); }
+.mlt-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.mlt-seg a { padding: 6px 16px; color: var(--dim); text-decoration: none; font-size: 13px; }
+.mlt-seg a.is-on { background: var(--raised); color: var(--gold); }
+
+/* ---------- نوار بالا، اعلان‌ها، تایمر ---------- */
+.mlt-topbar { position: sticky; top: 32px; z-index: 5; display: flex; gap: 8px 16px; align-items: baseline; flex-wrap: wrap; padding: 8px 0; margin: 0 -24px; padding-inline: 24px; background: var(--bg); border-bottom: 1px solid var(--line); font-size: 13px; }
+.mlt-clock-date, .mlt-clock-time { font-family: Rajdhani, Manrope, sans-serif; font-weight: 600; color: var(--ink); letter-spacing: .03em; }
+.mlt-clock-note { color: var(--dim); }
+.mlt-why-link { margin-inline-start: auto; }
+@media (max-width: 782px) { .mlt-topbar { top: 46px; } .mlt { margin-left: -10px; padding: 0 12px 40px; } .mlt-topbar { margin: 0 -12px; padding-inline: 12px; } }
+.mlt-announce, .mlt-peak, .mlt-why, .mlt-timerbar { margin: 14px 0 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); font-size: 13px; }
+.mlt-announce { border-color: var(--gold); }
+.mlt-peak { color: var(--gold); }
+.mlt-why { position: relative; padding-inline-end: 44px; color: var(--dim); }
+.mlt-why p { margin: 0; line-height: 2; }
+.mlt-why-close { position: absolute; top: 6px; inset-inline-end: 8px; margin: 0; }
+.mlt-x { background: none; border: 0; color: var(--dim); font-size: 22px; line-height: 1; cursor: pointer; }
+.mlt-x:hover { color: var(--ink); }
+.mlt-timerbar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; border-color: var(--gold); }
+.mlt-timerbar--paused { border-color: var(--line); }
+.mlt-timer-main { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+.mlt-timer-state { color: var(--gold); font-weight: 600; }
+.mlt-timer-net { font-family: Rajdhani, Manrope, sans-serif; font-size: 22px; color: var(--ink); }
+.mlt-timer-hint { color: var(--dim); font-size: 12px; }
+.mlt-code-link { color: var(--cyan); text-decoration: none; font-family: Rajdhani, Manrope, sans-serif; font-weight: 600; }
+.mlt-timer-actions, .mlt-ask { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mlt-ask { flex: 0 0 100%; border-top: 1px solid var(--line); padding-top: 10px; color: var(--ink); }
+.mlt-inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+.mlt .mlt-inline select, .mlt .mlt-inline input[type=datetime-local] { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; min-height: 34px; padding: 0 8px; font-family: inherit; color-scheme: dark; }
+.mlt-tip { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 50%; color: var(--dim); font-size: 12px; cursor: help; }
+.mlt-tip:hover, .mlt-tip:focus { color: var(--gold); border-color: var(--gold); outline: none; }
+
+/* ---------- پیام‌ها ---------- */
+.mlt-notice { border-radius: 8px; padding: 10px 14px; margin: 0 0 18px; border: 1px solid; font-size: 13px; }
+.mlt-notice--ok { color: var(--ink); border-color: var(--green); }
+.mlt-notice--error { color: var(--red); border-color: var(--red); }
+.mlt-notice--warn { color: var(--gold); border-color: var(--gold); }
+
+/* ---------- برد دو ستونه ---------- */
+.mlt-board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap) 40px; align-items: start; }
+@media (max-width: 900px) { .mlt-board { grid-template-columns: 1fr; } }
+.mlt-col > h2 { margin-bottom: 14px; display: flex; gap: 8px; align-items: baseline; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.mlt-card { background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; scroll-margin-top: 90px; }
+.mlt-card.is-late { border-color: rgba(229, 72, 77, .55); }
+.mlt-card--new, .mlt-card:target { border-color: var(--gold); }
+.mlt-card-top { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-bottom: 6px; }
+.mlt-code { background: none; border: 0; padding: 0; color: var(--cyan); font-family: Rajdhani, Manrope, sans-serif; font-weight: 600; font-size: 13px; letter-spacing: .04em; cursor: copy; }
+.mlt-code:hover { text-decoration: underline; }
+.mlt-badge { font-size: 11px; padding: 0 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); line-height: 18px; }
+.mlt-badge--late { color: var(--red); border-color: var(--red); }
+.mlt-badge--incomplete, .mlt-badge--score { color: var(--gold); border-color: var(--gold); }
+.mlt-prio { font-size: 11px; color: var(--dim); margin-inline-start: auto; }
+.mlt-prio--high { color: var(--gold); }
+.mlt-card h3 { line-height: 1.8; }
+.mlt-desc, .mlt-criteria { color: var(--dim); font-size: 13px; line-height: 1.9; margin: 4px 0 0; }
+.mlt-criteria strong { color: var(--ink); font-weight: 600; }
+.mlt-status--done { opacity: .8; }
+.mlt-status--done h3 { color: var(--dim); text-decoration: line-through; }
+.mlt-meta { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 10px; align-items: center; }
+.mlt-chip { font-size: 12px; color: var(--dim); }
+.mlt-chip::before { content: "@"; opacity: .6; }
+.mlt-chip.is-main { color: var(--ink); }
+.mlt-fact { font-size: 12px; color: var(--dim); }
+.mlt-fact.is-late { color: var(--red); }
+.mlt-fact.is-on { color: var(--gold); }
+.mlt-fact--bucket { margin-inline-start: auto; }
+.mlt-tag { font-size: 12px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); }
+.mlt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.mlt-actions form { margin: 0; }
+.mlt .mlt-status select { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; min-height: 28px; padding: 0 8px; font-family: inherit; font-size: 12px; }
+.mlt-del { margin-inline-start: auto !important; }
+.mlt-done { margin-top: var(--gap); }
+.mlt-done > summary { cursor: pointer; color: var(--gold); font-family: var(--font-head); font-size: 17px; padding-bottom: 8px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+.mlt-done-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; }
+@media (max-width: 900px) { .mlt-done-grid { grid-template-columns: 1fr; } }
+
+/* بخش‌هایی که با دکمه باز می‌شوند */
+.mlt-editpanel, .mlt-handoff, .mlt-comments { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mlt-editing .mlt-editpanel, .mlt-handing .mlt-handoff, .mlt-commenting .mlt-comments { display: block; }
+.mlt-handoff textarea { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-family: inherit; font-size: 12px; line-height: 1.9; margin-bottom: 8px; }
+.mlt-exts { margin: 0; padding-inline-start: 18px; color: var(--dim); font-size: 12px; line-height: 2; }
+
+/* ---------- فرم‌ها ---------- */
+.mlt-add { margin: 0 0 var(--gap); }
+.mlt-add summary { display: inline-flex; list-style: none; }
+.mlt-add summary::-webkit-details-marker { display: none; }
+.mlt-form { margin-top: 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.mlt-editpanel .mlt-form { background: var(--bg); margin-bottom: 12px; }
+@media (max-width: 700px) { .mlt-form { grid-template-columns: 1fr 1fr; } }
+.mlt-field { display: flex; flex-direction: column; gap: 6px; color: var(--dim); font-size: 12px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.mlt-field--wide { grid-column: 1 / -1; }
+.mlt-assignees { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.mlt-assignees legend { padding: 0; margin-bottom: 6px; }
+.mlt .mlt-form input:not([type=checkbox]), .mlt .mlt-form textarea, .mlt .mlt-form select { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-family: inherit; font-size: 13px; max-width: none; width: 100%; box-shadow: none; color-scheme: dark; }
+.mlt .mlt-editpanel .mlt-form input:not([type=checkbox]), .mlt .mlt-editpanel .mlt-form textarea, .mlt .mlt-editpanel .mlt-form select { background: var(--raised); }
+.mlt .mlt-form input:focus, .mlt .mlt-form textarea:focus, .mlt .mlt-form select:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }
+.mlt-idtable { border-collapse: collapse; margin: 4px 0 8px; }
+.mlt-idtable th { text-align: right; padding: 6px 16px 6px 0; color: var(--ink); font-weight: 400; font-size: 13px; }
+.mlt .mlt-idtable select { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-family: inherit; }
+
+/* ---------- کامنت‌ها ---------- */
+.mlt-comment { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.mlt-comment--flagged { border-color: var(--gold); }
+.mlt-c-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+.mlt-c-head strong { color: var(--ink); }
+.mlt-c-head .mlt-flag, .mlt-c-head .mlt-flagged { margin-inline-start: auto; }
+.mlt-flagged { color: var(--gold); border: 1px solid var(--gold); border-radius: 999px; padding: 0 8px; }
+.mlt-c-body { margin-top: 6px; font-size: 13px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mlt-comment-form { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 8px 0 0; }
+.mlt .mlt-comment-form textarea { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 13px; box-shadow: none; }
+.mlt .mlt-comment-form textarea:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }
+.mlt-tz { margin: 0 0 8px; color: var(--dim); font-size: 12px; }
+
+/* ---------- ایمپورت و گزارش‌ها ---------- */
+.mlt-import { background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 16px; max-width: 640px; display: flex; flex-direction: column; gap: 14px; }
+.mlt .mlt-import input[type=file] { color: var(--ink); font-family: inherit; }
+.mlt .mlt-import input[type=file]::file-selector-button { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 12px; margin-inline-end: 10px; font-family: inherit; cursor: pointer; }
+.mlt-report { background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 20px; max-width: 640px; }
+.mlt-report h2 { margin-bottom: 12px; }
+.mlt-report h3 { font-size: 14px; margin: 14px 0 6px; color: var(--dim); }
+.mlt-report table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.mlt-report th, .mlt-report td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.mlt-report th { color: var(--dim); font-weight: normal; }
+.mlt-report .mlt-total td { color: var(--gold); font-weight: 600; border-bottom: 0; }
+.mlt-reasons { margin: 0; padding-right: 18px; color: var(--ink); font-size: 13px; line-height: 2; }
+
+/* ---------- روتین‌ها و بانک ایده‌ها ---------- */
+.mlt-rsec { margin-bottom: var(--gap); }
+.mlt-rsec h2 { margin-bottom: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.mlt .mlt-rsec h2 code { font-size: 12px; font-weight: normal; }
+.mlt-rsec h2 .mlt-count { margin-inline-start: auto; }
+.mlt-rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px 24px; align-items: start; }
+.mlt-rgrid .mlt-card { margin-bottom: 0; }
+.mlt-tri { display: inline-flex; margin: 10px 0 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.mlt-tri button { background: var(--bg); color: var(--dim); border: 0; border-inline-start: 1px solid var(--line); padding: 4px 10px; font-family: inherit; font-size: 12px; cursor: pointer; }
+.mlt-tri button:first-of-type { border-inline-start: 0; }
+.mlt-tri button:not([disabled]):hover { color: var(--ink); background: var(--raised); }
+.mlt-tri button[disabled] { cursor: default; font-weight: 600; }
+.mlt-tri button.mlt-tri-open[disabled] { background: var(--line); color: var(--ink); }
+.mlt-tri button.mlt-tri-in_progress[disabled] { background: rgba(242, 168, 60, .18); color: var(--gold); }
+.mlt-tri button.mlt-tri-done[disabled] { background: rgba(70, 167, 88, .2); color: var(--green); }
+.mlt-icat { background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.mlt-icat h3 { margin-bottom: 8px; display: flex; justify-content: space-between; color: var(--gold); }
+.mlt-icat ul { list-style: none; margin: 0; padding: 0; }
+.mlt-idea { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; scroll-margin-top: 90px; }
+.mlt-idea:target { border-color: var(--gold); }
+.mlt-idea.mlt-status--done .mlt-idea-title { text-decoration: line-through; color: var(--dim); }
+.mlt-idea-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mlt-idea-title { font-size: 14px; font-weight: 600; }
+.mlt-idea .mlt-tri { margin-top: 8px; }
+.mlt-rtools { margin-top: 10px; display: flex; gap: 6px 12px; flex-wrap: wrap; align-items: center; }
+.mlt-stopped { opacity: .75; }
+
+/* ---------- گزارش‌ها، لاگ و تنظیمات ---------- */
+.mlt-flaglist { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px 24px; align-items: start; }
+.mlt-flaglist .mlt-card { margin-bottom: 0; }
+.mlt-flaglist h3 a, .mlt-link { color: var(--cyan); text-decoration: none; }
+.mlt-flaglist h3 a:hover, .mlt-link:hover { text-decoration: underline; }
+.mlt-convert { margin: 12px 0 0; }
+.mlt-logfilters { margin-bottom: 12px; align-items: center; }
+.mlt-date { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 13px; }
+.mlt .mlt-logfilters input[type=date] { background: var(--raised); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-family: inherit; min-height: 34px; color-scheme: dark; }
+.mlt-tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); }
+.mlt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mlt-table th, .mlt-table td { text-align: right; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.mlt-table th { color: var(--dim); font-weight: normal; white-space: nowrap; }
+.mlt-table tbody tr:last-child td { border-bottom: 0; }
+.mlt-table td[dir=ltr] { text-align: left; white-space: nowrap; }
+.mlt-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; color: var(--dim); }
+.mlt-settings { max-width: 720px; }
+.mlt-settings .mlt-field input[type=text], .mlt .mlt-settings input[type=password], .mlt .mlt-settings input[type=date], .mlt .mlt-settings textarea { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 14px; width: 100%; max-width: none; box-shadow: none; color-scheme: dark; }
+.mlt .mlt-settings input:focus, .mlt .mlt-settings textarea:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }
+.mlt .mlt-settings input[disabled] { opacity: .55; }
+
+/* ---------- امروز من و گزارش زمان ---------- */
+.mlt-focus { margin-bottom: var(--gap); }
+.mlt-focus h2 { margin-bottom: 4px; }
+.mlt-focus .mlt-hint { margin-bottom: 14px; }
+.mlt-today-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; }
+@media (max-width: 900px) { .mlt-today-grid { grid-template-columns: 1fr; } }
+.mlt-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin: 0 0 var(--gap); }
+.mlt-stat { background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.mlt-stat b { display: block; font-family: Rajdhani, Manrope, sans-serif; font-size: 24px; color: var(--ink); font-weight: 600; }
+.mlt-stat span { color: var(--dim); font-size: 12px; }
+.mlt-bars { display: grid; grid-template-columns: minmax(120px, 220px) 1fr auto; gap: 8px 14px; align-items: center; font-size: 13px; margin-bottom: var(--gap); }
+.mlt-bars svg { width: 100%; height: 14px; display: block; }
+.mlt-bars .bar-bg { fill: var(--line); }
+.mlt-bars .bar-a { fill: var(--gold); }
+.mlt-bars .bar-b { fill: var(--dim); }
+.mlt-bars small { color: var(--dim); }
+.mlt-legend { display: flex; gap: 16px; color: var(--dim); font-size: 12px; margin: -12px 0 var(--gap); }
+.mlt-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-end: 6px; }
+.mlt-speed { font-size: 15px; color: var(--ink); margin: 0 0 var(--gap); }
+
+/* ---------- ارسال دستی به تلگرام ---------- */
+.mlt-notify { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; width: 100%; }
+.mlt-notify-toggle { margin: 0; }
+.mlt-notify-label { color: var(--dim); font-size: 12px; cursor: pointer; }
+.mlt-notify-toggle:checked + .mlt-notify-label { color: var(--gold); }
+.mlt-notify-body { display: none; flex: 0 0 100%; }
+.mlt-notify-toggle:checked ~ .mlt-notify-body { display: block; }
+.mlt .mlt-notify textarea { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 13px; line-height: 1.8; box-shadow: none; }
+.mlt .mlt-notify textarea:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }
+.mlt-notify-body .mlt-hint { margin: 4px 0 8px; font-size: 12px; }
+.mlt-actions .mlt-status, .mlt-actions .mlt-notify--inline { display: contents; }
+.mlt-actions .mlt-notify--inline .mlt-notify-body { flex-basis: 100%; }
+.mlt-actions .mlt-notify--inline .mlt-notify-toggle:checked ~ .mlt-notify-body { display: block; width: 100%; }
+.mlt-bars svg { transform: scaleX(-1); } /* RTL: the bars grow from the right */
+.mlt-bars > span svg + svg { margin-top: 3px; }
+
+
+/* ---------- حالت‌ها: normal / hover / focus / active / disabled ----------
+   ادمین وردپرس برای select و لینک و فیلدها قاعده‌ی :hover و :focus دارد (مثلاً select:hover { color: #0a4b78 !important}
+   و a:hover { color: #135e96 !important}) که روی پس‌زمینه‌ی تیره متن را تیره و ناخوانا می‌کند. اینجا برای هر کنترل، رنگ متن و
+   پس‌زمینه در همه‌ی حالت‌ها صریح نوشته شده و با .mlt شروع می‌شود تا بر قاعده‌های وردپرس غلبه کند.
+   کنتراست همه‌ی جفت‌رنگ‌ها ≥ 4.5 است (tests/css-check.py آن را می‌سنجد). */
+.mlt { color-scheme: dark; }
+.mlt a, .mlt a:visited { color: var(--cyan); }
+.mlt a:hover, .mlt a:active { color: var(--cyan-hover) !important; }
+.mlt a:focus { color: var(--cyan-hover) !important; outline: 2px solid var(--gold); outline-offset: 2px; box-shadow: none; }
+
+/* select (فیلتر وضعیت، فیلتر مسئول، دلیل پاز، تغییر وضعیت روی کارت، …) */
+.mlt select { background-color: var(--raised); color: var(--ink); border: 1px solid var(--line); }
+.mlt select option { background-color: var(--raised); color: var(--ink); }
+.mlt select:hover { background-color: var(--hover) !important; color: var(--ink) !important; border-color: var(--dim); }
+.mlt select:focus { background-color: var(--raised) !important; color: var(--ink) !important; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); outline: none; }
+.mlt select:active { background-color: var(--hover) !important; color: var(--ink) !important; border-color: var(--gold); }
+.mlt select:disabled { background-color: var(--raised) !important; color: var(--dim) !important; border-color: var(--line); opacity: .7; cursor: not-allowed; }
+
+/* فیلدهای متنی */
+.mlt input:not([type=checkbox]):not([type=radio]):not([type=file]):hover, .mlt textarea:hover { background-color: var(--bg) !important; color: var(--ink) !important; border-color: var(--dim); }
+.mlt input:not([type=checkbox]):not([type=radio]):not([type=file]):focus, .mlt textarea:focus { background-color: var(--bg) !important; color: var(--ink) !important; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); outline: none; }
+.mlt input:not([type=checkbox]):not([type=radio]):not([type=file]):disabled, .mlt textarea:disabled { background-color: var(--raised) !important; color: var(--dim) !important; border-color: var(--line); opacity: .7; }
+
+/* دکمه‌ی اصلی */
+.mlt .mlt-btn { background-color: var(--gold); color: var(--bg); border-color: var(--gold); text-decoration: none; }
+.mlt .mlt-btn:hover { background-color: var(--gold) !important; color: var(--bg) !important; border-color: var(--gold); filter: brightness(1.08); }
+.mlt .mlt-btn:focus { background-color: var(--gold) !important; color: var(--bg) !important; outline: 2px solid var(--ink); outline-offset: 2px; box-shadow: none; }
+.mlt .mlt-btn:active { background-color: var(--gold-press) !important; color: var(--bg) !important; border-color: var(--gold-press); filter: none; }
+.mlt .mlt-btn:disabled, .mlt .mlt-btn[disabled] { background-color: var(--line) !important; color: var(--dim) !important; border-color: var(--line); filter: none; opacity: 1; cursor: not-allowed; }
+/* دکمه‌ی ثانویه */
+.mlt .mlt-btn--ghost { background-color: transparent; color: var(--ink); border-color: var(--line); }
+.mlt .mlt-btn--ghost:hover { background-color: var(--hover) !important; color: var(--gold) !important; border-color: var(--gold); filter: none; }
+.mlt .mlt-btn--ghost:focus { background-color: var(--hover) !important; color: var(--gold) !important; border-color: var(--gold); outline: 2px solid var(--gold); outline-offset: 2px; }
+.mlt .mlt-btn--ghost:active { background-color: var(--raised) !important; color: var(--gold) !important; border-color: var(--gold); }
+.mlt .mlt-btn--ghost:disabled, .mlt .mlt-btn--ghost[disabled] { background-color: transparent !important; color: var(--dim) !important; border-color: var(--line); }
+
+/* دکمه‌های متنی روی کارت: ویرایش، کامنت‌ها، تحویل به ایجنت، حذف، پرچم */
+.mlt .mlt-link-btn, .mlt .mlt-linkbtn { background-color: transparent; color: var(--dim); border: 0; text-decoration: none; }
+.mlt .mlt-link-btn:hover, .mlt .mlt-linkbtn:hover { background-color: var(--hover) !important; color: var(--gold) !important; }
+.mlt .mlt-link-btn:focus, .mlt .mlt-linkbtn:focus { background-color: var(--hover) !important; color: var(--gold) !important; outline: 2px solid var(--gold); outline-offset: 1px; box-shadow: none; }
+.mlt .mlt-link-btn:active, .mlt .mlt-linkbtn:active { background-color: var(--raised) !important; color: var(--gold) !important; }
+.mlt .mlt-link-btn:disabled, .mlt .mlt-linkbtn:disabled { background-color: transparent !important; color: var(--dim) !important; cursor: not-allowed; opacity: .7; }
+.mlt .mlt-link-btn--danger:hover, .mlt .mlt-link-btn--danger:focus, .mlt .mlt-link-btn--danger:active { background-color: var(--hover) !important; color: #ff7b80 !important; }
+
+/* کلید «تسک‌های من / همه» */
+.mlt .mlt-seg a { background-color: transparent; color: var(--dim); text-decoration: none; }
+.mlt .mlt-seg a:hover { background-color: var(--hover) !important; color: var(--ink) !important; }
+.mlt .mlt-seg a:focus { background-color: var(--hover) !important; color: var(--ink) !important; outline: 2px solid var(--gold); outline-offset: -2px; box-shadow: none; }
+.mlt .mlt-seg a:active { background-color: var(--raised) !important; color: var(--gold) !important; }
+.mlt .mlt-seg a.is-on, .mlt .mlt-seg a.is-on:hover, .mlt .mlt-seg a.is-on:focus, .mlt .mlt-seg a.is-on:active { background-color: var(--raised) !important; color: var(--gold) !important; }
+
+/* سه‌حالته‌ی روتین‌ها و ایده‌ها */
+.mlt .mlt-tri button { background-color: var(--bg); color: var(--dim); }
+.mlt .mlt-tri button:not([disabled]):hover { background-color: var(--hover) !important; color: var(--ink) !important; }
+.mlt .mlt-tri button:not([disabled]):focus { background-color: var(--hover) !important; color: var(--ink) !important; outline: 2px solid var(--gold); outline-offset: -2px; }
+.mlt .mlt-tri button:not([disabled]):active { background-color: var(--raised) !important; color: var(--gold) !important; }
+
+/* کد تسک، ×، راهنمای ؟ */
+.mlt .mlt-code { background-color: transparent; color: var(--cyan); }
+.mlt .mlt-code:hover, .mlt .mlt-code:active { background-color: transparent !important; color: var(--cyan-hover) !important; }
+.mlt .mlt-code:focus { color: var(--cyan-hover) !important; outline: 2px solid var(--gold); outline-offset: 2px; box-shadow: none; }
+.mlt .mlt-x { background-color: transparent; color: var(--dim); }
+.mlt .mlt-x:hover, .mlt .mlt-x:focus, .mlt .mlt-x:active { background-color: var(--hover) !important; color: var(--ink) !important; outline: none; box-shadow: none; }
+.mlt .mlt-tip { background-color: transparent; color: var(--dim); }
+.mlt .mlt-tip:hover, .mlt .mlt-tip:focus, .mlt .mlt-tip:active { background-color: var(--hover) !important; color: var(--gold) !important; }
+
+/* ---------- بررسی سلامت ---------- */
+.mlt-health { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px 24px; align-items: start; margin-bottom: var(--gap); }
+.mlt-check-card { background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-right: 3px solid var(--line); }
+.mlt-check--ok { border-right-color: var(--green); }
+.mlt-check--warn { border-right-color: var(--gold); }
+.mlt-check--fail { border-right-color: var(--red); }
+.mlt-check-card h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.mlt-check-card .mlt-badge { margin-inline-start: auto; }
+.mlt-check--ok .mlt-badge { color: var(--green); border-color: var(--green); }
+.mlt-check--warn .mlt-badge { color: var(--gold); border-color: var(--gold); }
+.mlt-check--fail .mlt-badge { color: var(--red); border-color: var(--red); }
+.mlt-check-msg { margin: 0; font-size: 13px; line-height: 1.9; }
+.mlt-check-fix { margin: 8px 0 0; font-size: 12px; color: var(--dim); line-height: 1.9; border-top: 1px solid var(--line); padding-top: 8px; }
+.mlt-check-fix strong { color: var(--ink); font-weight: 600; }
+.mlt-check-table { border-collapse: collapse; margin: 8px 0 0; font-size: 12px; width: 100%; }
+.mlt-check-table th, .mlt-check-table td { text-align: right; padding: 3px 0; vertical-align: top; }
+.mlt-check-table th { color: var(--dim); font-weight: 400; padding-inline-end: 14px; white-space: nowrap; }

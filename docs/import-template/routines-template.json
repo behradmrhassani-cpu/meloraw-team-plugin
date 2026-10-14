@@ -1,0 +1,54 @@
+{
+    "format": "meloraw-tasks-import",
+    "version": 1,
+    "_help": "نمونه‌ی ساختگی. مقدارها را با داده‌ی خودت عوض کن؛ کلیدهایی که با _ شروع می‌شوند نادیده گرفته می‌شوند.",
+    "routines": [
+        {
+            "id": "demo-r1",
+            "title": "نمونه: مرور صندوق پیام‌ها",
+            "description": "هر روز یک بار.",
+            "owner": "you",
+            "assignees": [],
+            "frequency": "daily",
+            "status": "open",
+            "bucket": "normal",
+            "priority": "med",
+            "estimate_minutes": 15,
+            "due_date": null,
+            "done_criteria": "همه‌ی پیام‌ها پاسخ یا برچسب خورده‌اند.",
+            "recurrence_until": null
+        },
+        {
+            "id": "demo-r2",
+            "title": "نمونه: برنامه‌ی انتشار هفته‌ی بعد",
+            "description": "",
+            "owner": "maral",
+            "assignees": [
+                "you"
+            ],
+            "frequency": "weekly",
+            "status": "open",
+            "bucket": "boost",
+            "priority": "high",
+            "estimate_minutes": 60,
+            "due_date": null,
+            "done_criteria": "",
+            "recurrence_until": "2030-12-31"
+        },
+        {
+            "id": "demo-r3",
+            "title": "نمونه: گزارش ماهانه",
+            "description": "",
+            "owner": "chakra",
+            "assignees": [],
+            "frequency": "monthly",
+            "status": "open",
+            "bucket": "normal",
+            "priority": "low",
+            "estimate_minutes": 120,
+            "due_date": null,
+            "done_criteria": "",
+            "recurrence_until": null
+        }
+    ]
+}
