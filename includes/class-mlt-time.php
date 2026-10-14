@@ -6,7 +6,8 @@ if (!defined('ABSPATH')) {
 /**
  * The one clock of the plugin: UTC+0 (the time the site's posts are published in), Gregorian dates only.
  * Used for routine periods, due dates, timers, scores and every time shown in the panel. The WordPress
- * timezone setting is never read or changed; the database keeps UTC as well.
+ * timezone setting is never read or changed, and neither is the database clock or zone: every stored time is built
+ * here (or with gmdate/time) and passed to SQL as a parameter; the columns are DATETIME, not TIMESTAMP.
  */
 class MLT_Time
 {

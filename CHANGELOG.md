@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- Health check "server clock": no longer red when the database session time zone is not UTC. The old check used `UNIX_TIMESTAMP(UTC_TIMESTAMP())`, which reads its argument in the session zone, so a +03:30 database looked 12600 s off. The plugin never used the database clock; the card now reports the zone (green) and only warns on a real clock difference over 60 s.
+- `tests/db-scenarios.php`: DB-zone independence scenarios (+03:30, -05:00, +13:00) and a fix so a failed check really makes the script report failure.
+
 ## 3.0.0
 - Board: "my tasks" / "all", two columns, compact cards, readable hover/focus states.
 - Task codes per creator (MH-1, MA-1, CH-1, AU-1), several assignees per task.

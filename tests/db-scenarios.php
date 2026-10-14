@@ -12,7 +12,7 @@ if (!defined('ABSPATH') || getenv('MLT_ALLOW_DB_TESTS') !== '1') {
     exit(2);
 }
 
-$failed = 0;
+$GLOBALS['failed'] = 0; // wp eval-file runs this file inside a function, so a plain $failed here would not be the global one check() counts in
 function check($label, $ok, $detail = '')
 {
     global $failed;
@@ -174,6 +174,77 @@ check('every non-green check explains what to do', true);
 $token_probe = MLT_Health::probe_permission(new WP_REST_Request('GET', '/x'));
 check('the probe route refuses a request without the token', is_wp_error($token_probe));
 
+echo "== database time zone: the plugin must not depend on it (3.5 h, -5 h and +13 h zones)\n";
+$near = function ($value, $ts = null) { return abs((new DateTimeImmutable((string) $value, new DateTimeZone('UTC')))->getTimestamp() - ($ts ?? time())) <= 5; };
+$call = function ($method, $route, array $body = []) {
+    $r = new WP_REST_Request($method, '/meloraw-tasks/v1' . $route);
+    foreach ($body as $k => $v) { $r->set_param($k, $v); }
+    $res = rest_do_request($r);
+    return [$res->get_status(), $res->get_data()];
+};
+$orig_zone = $wpdb->get_var('SELECT @@session.time_zone');
+foreach (['+03:30', '-05:00', '+13:00'] as $zone) {
+    $wpdb->query($wpdb->prepare('SET time_zone = %s', $zone));
+    $off = (int) $wpdb->get_var('SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW())');
+    check("[$zone] the session really is in that zone (NOW() - UTC_TIMESTAMP() = $off s)", $off !== 0);
+
+    // the health check: green, mentions the zone, and is not fooled by UNIX_TIMESTAMP(UTC_TIMESTAMP())
+    $wrong = abs((int) $wpdb->get_var('SELECT UNIX_TIMESTAMP(UTC_TIMESTAMP())') - time());
+    $h = MLT_Health::run('clock');
+    check("[$zone] the old way of measuring would have said {$wrong} s apart (the false alarm)", $wrong > 3000);
+    check("[$zone] clock check is " . $h[0] . ' (not red) and names the database zone', $h[0] === 'ok' && strpos($h[1], $zone) !== false, json_encode($h, JSON_UNESCAPED_UNICODE));
+
+    // task, timer, comment, done: every stored time is the UTC now
+    [$c, $t] = $call('POST', '/tasks', ['title' => "dbtest zone $zone", 'owner' => 'you', 'estimate_minutes' => 30, 'due_date' => gmdate('Y-m-d')]);
+    $id = (int) ($t['id'] ?? 0); $created[] = $id;
+    check("[$zone] task created ($c)", $c === 201 && $id > 0);
+    $row = $wpdb->get_row("SELECT created_at, updated_at FROM {$p}mlt_tasks WHERE id = $id", ARRAY_A);
+    check("[$zone] tasks.created_at/updated_at are UTC", $near($row['created_at']) && $near($row['updated_at']), json_encode($row));
+    [$c] = $call('POST', "/tasks/$id/timer/start");
+    $e = $wpdb->get_row("SELECT started_at FROM {$p}mlt_time_entries WHERE task_id = $id ORDER BY id DESC", ARRAY_A);
+    check("[$zone] timer started_at is UTC ($c)", $c === 200 && $near($e['started_at']), json_encode($e));
+    [$c] = $call('POST', "/tasks/$id/timer/pause", ['reason' => 'food']);
+    [$c2] = $call('POST', "/tasks/$id/timer/resume");
+    [$c3, $fin] = $call('POST', "/tasks/$id/timer/finish");
+    $e = $wpdb->get_results("SELECT started_at, ended_at FROM {$p}mlt_time_entries WHERE task_id = $id", ARRAY_A);
+    $ok = count($e) === 2;
+    foreach ($e as $x) { $ok = $ok && $near($x['started_at']) && $near($x['ended_at']); }
+    check("[$zone] pause/resume/finish: entries are UTC and the total is seconds, not hours ($c/$c2/$c3)", $ok && ($fin['summary']['net_seconds'] ?? 99999) < 60, json_encode([$e, $fin['summary'] ?? null]));
+    [$c, $cm] = $call('POST', "/tasks/$id/comments", ['body' => 'dbtest comment']);
+    check("[$zone] comment created_at is UTC", $c === 201 && $near($wpdb->get_var("SELECT created_at FROM {$p}mlt_comments WHERE id = " . (int) $cm['id'])));
+    [$c] = $call('PATCH', "/tasks/$id", ['status' => 'done']);
+    $sc = $wpdb->get_row("SELECT completed_at, late, tier FROM {$p}mlt_scores WHERE task_id = $id", ARRAY_A);
+    check("[$zone] score: completed_at is UTC and a task due today is not late ($c)", $sc && $near($sc['completed_at']) && (int) $sc['late'] === 0, json_encode($sc));
+    $log = $wpdb->get_results("SELECT created_at FROM {$p}mlt_activity_log WHERE task_id = $id", ARRAY_A);
+    $okl = count($log) >= 4;
+    foreach ($log as $l) { $okl = $okl && $near($l['created_at']); }
+    check("[$zone] activity log: " . count($log) . ' rows, all UTC', $okl, json_encode($log));
+    $today = gmdate('Y-m-d');
+    $hit = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$p}mlt_activity_log WHERE task_id = %d AND created_at >= %s AND created_at <= %s", $id, $today . ' 00:00:00', $today . ' 23:59:59'));
+    check("[$zone] the log's day filter (UTC day bounds) finds them", $hit === count($log) || gmdate('H') === '00' || gmdate('H') === '23');
+}
+
+// UTC midnight boundaries with a fixed clock, while the session is in a zone where it is already "tomorrow"
+$wpdb->query("SET time_zone = '+03:30'");
+$late_night = new DateTimeImmutable('2026-10-12 23:00:00', new DateTimeZone('UTC'));   // 2026-10-13 02:30 in Tehran
+check('routine: 23:00 UTC is still the 12th (daily key)', MLT_Routines::period_key('daily', $late_night) === '2026-10-12');
+$month_end = new DateTimeImmutable('2026-10-31 23:30:00', new DateTimeZone('UTC'));    // 2026-11-01 in Tehran
+check('routine: 31 Oct 23:30 UTC is still October (monthly key)', MLT_Routines::period_key('monthly', $month_end) === '2026-10');
+$sun_night = new DateTimeImmutable('2026-10-11 22:00:00', new DateTimeZone('UTC'));    // Sunday 22:00 UTC, Monday 01:30 in Tehran
+check('score week key follows the UTC week, not the database zone', MLT_Score::week_key($sun_night->getTimestamp()) === MLT_Routines::period_key('weekly', $sun_night));
+$ref = new ReflectionMethod('MLT_Score', 'is_late'); $ref->setAccessible(true);
+check('score: done at 22:00 UTC on the due day is not late (it would be late in Tehran)', $ref->invoke(null, '2026-10-12', (new DateTimeImmutable('2026-10-12 22:00:00', new DateTimeZone('UTC')))->getTimestamp()) === false);
+check('score: done at 00:00:01 UTC the next day is late', $ref->invoke(null, '2026-10-12', (new DateTimeImmutable('2026-10-13 00:00:01', new DateTimeZone('UTC')))->getTimestamp()) === true);
+check('clock result: a real PHP-vs-database difference is only a warning, never red', MLT_Health::clock_result(12600, 0, '+00:00')[0] === 'warn' && MLT_Health::clock_result(3, 12600, '+00:00')[0] === 'ok' && MLT_Health::clock_result(0, 0, '+03:30')[0] === 'fail');
+
+// negative control: a row written with the database clock IS off by the zone, so these checks can fail
+$wpdb->query("INSERT INTO {$p}mlt_comments (task_id, body, author, flagged, created_at) VALUES (0, 'dbtest control', 0, 0, NOW())");
+$ctl = $wpdb->get_var("SELECT created_at FROM {$p}mlt_comments WHERE body = 'dbtest control' ORDER BY id DESC LIMIT 1");
+check('negative control: NOW() under +03:30 is ~12600 s away from UTC (the tests above would catch it)', !$near($ctl) && abs((new DateTimeImmutable($ctl, new DateTimeZone('UTC')))->getTimestamp() - time() - 12600) <= 5, $ctl);
+$wpdb->query("DELETE FROM {$p}mlt_comments WHERE body = 'dbtest control'");
+$wpdb->query($wpdb->prepare('SET time_zone = %s', $orig_zone));
+
 $clean();
+$failed = $GLOBALS['failed'];
 echo $failed ? "\n$failed check(s) FAILED\n" : "\nall db scenarios passed\n";
 exit($failed ? 1 : 0);
