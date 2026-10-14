@@ -266,20 +266,35 @@ class MLT_Health
         return self::ok('X-Robots-Tag، Cache-Control: no-store و X-LiteSpeed-Cache-Control روی پاسخ API هستند.');
     }
 
+    /**
+     * The plugin never reads the database clock: every stored time is built in PHP in UTC and passed to SQL as a
+     * parameter (columns are DATETIME, not TIMESTAMP, so the session time zone cannot shift them). So a database in
+     * another time zone is only reported. UTC_TIMESTAMP() does not depend on the zone; the offset is NOW() - UTC_TIMESTAMP().
+     * (UNIX_TIMESTAMP(UTC_TIMESTAMP()) would be wrong here: it reads its argument in the session zone.)
+     */
     public static function check_clock()
     {
         global $wpdb;
-        $db = (int) $wpdb->get_var('SELECT UNIX_TIMESTAMP(UTC_TIMESTAMP())');
-        $diff = abs($db - time());
-        $now = MLT_Time::now();
-        if ($now->format('P') !== '+00:00') {
+        $db_utc = (string) $wpdb->get_var('SELECT UTC_TIMESTAMP()');
+        $offset = (int) $wpdb->get_var('SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW())');
+        $db_ts = $db_utc !== '' ? (new DateTimeImmutable($db_utc, new DateTimeZone('UTC')))->getTimestamp() : time();
+        return self::clock_result(abs($db_ts - time()), $offset, MLT_Time::now()->format('P'));
+    }
+
+    /** @param int $diff seconds between PHP and the database UTC clock; $offset database zone in seconds; $php_offset "+00:00" */
+    public static function clock_result($diff, $offset, $php_offset)
+    {
+        if ($php_offset !== '+00:00') {
             return self::fail('ساعت افزونه روی UTC نیست.', 'این یک باگ افزونه است؛ MLT_Time باید UTC باشد.');
         }
-        if ($diff > 5) {
-            return self::fail('ساعت PHP و دیتابیس ' . $diff . ' ثانیه اختلاف دارند.', 'ساعت سرور را با NTP هماهنگ کن (زمان‌سنج و دوره‌ی روتین‌ها به آن وابسته‌اند).');
+        $now = MLT_Time::now();
+        $sign = $offset < 0 ? '-' : '+';
+        $zone = sprintf('%s%02d:%02d', $sign, intdiv(abs($offset), 3600), intdiv(abs($offset) % 3600, 60));
+        $info = 'اکنون ' . $now->format('Y-m-d H:i:s') . ' UTC (ساعت PHP). منطقه‌ی زمانی دیتابیس ' . $zone . ($offset === 0 ? ' (UTC)' : ' است و مهم نیست') . '؛ افزونه فقط ساعت PHP را به UTC می‌خواند و به ساعت یا منطقه‌ی دیتابیس وابسته نیست. تنظیم منطقه‌ی زمانی وردپرس هم دست‌نخورده است.';
+        if ($diff > 60) {
+            return self::warn('ساعت واقعی PHP و دیتابیس ' . $diff . ' ثانیه اختلاف دارند (فقط اطلاع؛ به افزونه اثر ندارد).', 'افزونه از ساعت PHP استفاده می‌کند. اگر ساعت PHP مطمئن نیست، سرور را با NTP هماهنگ کن؛ ساعت دیتابیس لازم نیست عوض شود. ' . $info);
         }
-        $tz = (string) get_option('timezone_string') ?: 'UTC' . sprintf('%+g', (float) get_option('gmt_offset'));
-        return self::ok('اکنون ' . $now->format('Y-m-d H:i:s') . ' UTC (اختلاف PHP و دیتابیس ' . $diff . ' ثانیه). نوار ساعت پنل از همین ساعت شروع می‌شود. تنظیم منطقه‌ی زمانی وردپرس (' . $tz . ') دست‌نخورده است و افزونه از آن استفاده نمی‌کند.');
+        return self::ok($info);
     }
 
     public static function check_identity()
